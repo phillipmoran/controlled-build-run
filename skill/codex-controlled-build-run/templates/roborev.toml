@@ -1,0 +1,18 @@
+agent = "claude-code"
+review_agent = "claude-code"
+review_model = "claude-sonnet-5"
+review_reasoning = "standard"
+snapshot_dir = ".roborev"
+review_guidelines = """
+# EDIT ME — repository review contract
+
+Read the repository's binding documents on every review. Cite a concrete
+principle, invariant, contract, or observable behavior for every finding.
+Vague style preference is not a finding. Prefer fewer, higher-signal findings.
+
+Classify severity as load-bearing, minor, or nitpick. Surface correctness,
+contract drift, security boundaries, missing watched-fail coverage, and second
+implementations. Do not invent requirements absent from the plan or contracts.
+Tests default to no narration comments; production comments explain local
+rationale only when the reason is not evident from the code.
+"""

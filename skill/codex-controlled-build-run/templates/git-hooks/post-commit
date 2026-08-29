@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Queue every commit. Surfacing failure is optional; roborev-clean fails closed.
+command -v roborev >/dev/null 2>&1 || exit 0
+roborev review HEAD >/dev/null 2>&1 || true

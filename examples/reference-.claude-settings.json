@@ -1,0 +1,55 @@
+{
+  "model": "claude-opus-4-8",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'ANTHROPIC_MODEL=claude-sonnet-5; export ANTHROPIC_MODEL; if [ -x node_modules/.bin/probity ]; then node_modules/.bin/probity --agent claude-code; else npx --yes @nizos/probity@1.8.1 --agent claude-code; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/roborev-gate.sh",
+            "asyncRewake": true,
+            "timeout": 300,
+            "rewakeMessage": "RoboRev flagged the last commit (FAIL). Two steps, BOTH mandatory, in order: (1) handle the finding \u2014 fix it, or judge it wrong/intentional; (2) BEFORE your next commit, run: roborev respond <job> -m '<what you did and why>' && roborev close <job>. A fix commit that cites the review number does NOT close it \u2014 only the close command does. Leave a review open ONLY if it is deliberately deferred or needs the operator. Max 2 fix rounds per finding-surface (a genuinely NEW defect resets the counter), then stop fixing: escalate, or decline by judgment with recorded reasoning surfaced to the human. Finding follows:",
+            "rewakeSummary": "RoboRev FAIL on last commit"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/roborev-session-sweep.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-compact-reground.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "autoCompactWindow": 350000,
+  "autoCompactEnabled": true,
+  "autoCompactThreshold": 0.85
+}

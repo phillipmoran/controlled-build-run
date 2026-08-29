@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "integrationBranch": "integration/EDIT-ME",
+  "streams": [
+    {
+      "slug": "example",
+      "branch": "stream/example",
+      "worktree": "/absolute/path/to/worktree",
+      "dependsOn": [],
+      "filesOwned": ["packages/example/**"],
+      "status": "planned",
+      "findingsLogged": false,
+      "mergedAt": null
+    }
+  ]
+}

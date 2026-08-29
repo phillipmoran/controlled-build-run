@@ -1,0 +1,4 @@
+# Merge this into an existing .codex/config.toml by hand; arm never clobbers it.
+# 85% of a 350k context. Lower both project knob and this value for a model
+# whose context is smaller.
+model_auto_compact_token_limit = 297500

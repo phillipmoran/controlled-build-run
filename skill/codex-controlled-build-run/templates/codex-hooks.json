@@ -1,0 +1,103 @@
+{
+  "description": "Codex controlled-build-run lifecycle enforcement.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|apply_patch|Edit|Write)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0; cd \"$root\" || exit 0; if [ -x node_modules/.bin/probity ]; then exec node_modules/.bin/probity --agent codex; else exec npx --yes @nizos/probity@1.10.0 --agent codex; fi'",
+            "timeout": 120,
+            "statusMessage": "Probity is checking TDD and repository rules"
+          }
+        ]
+      },
+      {
+        "matcher": "^(request_user_input|RequestUserInput)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/no-interactive-question.sh\"",
+            "timeout": 10,
+            "statusMessage": "Checking the headless question policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/roborev-gate.sh\"",
+            "timeout": 300,
+            "statusMessage": "Waiting for the commit review"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/roborev-session-sweep.sh\"",
+            "timeout": 30,
+            "statusMessage": "Checking open reviews"
+          }
+        ]
+      },
+      {
+        "matcher": "^resume$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CBR_REGROUND_EVENT=SessionStart bash \"$(git rev-parse --show-toplevel)/.codex/hooks/post-compact-reground.sh\"",
+            "timeout": 30,
+            "additionalContextLimit": 0,
+            "statusMessage": "Re-grounding the resumed build after compaction"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/mark-post-compact.sh\"",
+            "timeout": 10,
+            "statusMessage": "Marking the build for automatic re-grounding"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CBR_REGROUND_EVENT=UserPromptSubmit bash \"$(git rev-parse --show-toplevel)/.codex/hooks/post-compact-reground.sh\"",
+            "timeout": 30,
+            "additionalContextLimit": 0,
+            "statusMessage": "Re-grounding the build after compaction"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/builder-stop-check.sh\"",
+            "timeout": 15,
+            "statusMessage": "Checking the active build plan"
+          }
+        ]
+      }
+    ]
+  }
+}

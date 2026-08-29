@@ -1,0 +1,36 @@
+// probity.config.ts — TEMPLATE (controlled-build-run-kit).
+//
+// Probity is the TDD + naming guard. The PreToolUse hook runs
+// `node_modules/.bin/probity --agent claude-code (npx @1.8.1 fallback)` before every Write/Edit/Bash;
+// THIS file tells it which files to guard and what to forbid. It is the single
+// most repo-specific file in the kit — adapt every glob to YOUR source tree.
+//
+// Docs: https://www.npmjs.com/package/@nizos/probity
+//
+// PORTING CHECKLIST:
+//   1. Set the `files` globs to your production code (the origin host used 'packages/**/*.py').
+//   2. Keep enforceTdd() — it is the whole point (no prod code before a watched-fail test).
+//   3. Replace/remove the naming bans below with YOUR repo's rules (or delete them).
+//   4. See examples/reference-probity.config.ts for the real, worked reference version.
+
+import { defineConfig, enforceTdd, forbidContentPattern } from '@nizos/probity'
+
+// --- OPTIONAL naming bans: delete or rewrite for your repo --------------------
+// Example: forbid a project-name prefix on imports (the origin host forbade `from canon_X`).
+// const noProjectPrefix = forbidContentPattern({
+//   match: /\b(from|import)\s+yourprefix_\w+/,
+//   reason: 'Project-prefixed module names are forbidden. Drop the prefix.',
+// })
+
+export default defineConfig({
+  rules: [
+    {
+      // TODO: point this at YOUR production source globs.
+      files: ['src/**/*.ts', 'src/**/*.tsx'],
+      // Add your forbidContentPattern rules to this array alongside enforceTdd().
+      rules: [enforceTdd()],
+    },
+    // Add more { files, rules } blocks for other languages / trees, e.g.:
+    // { files: ['packages/**/*.py'], rules: [enforceTdd()] },
+  ],
+})

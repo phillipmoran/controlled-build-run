@@ -1,0 +1,4 @@
+interface:
+  display_name: "Controlled Build Run for Codex"
+  short_description: "Plan-driven TDD builds with enforced review"
+  default_prompt: "Use $codex-controlled-build-run to arm this repository and run the build from a file-backed plan with Probity, RoboRev, and compaction recovery."

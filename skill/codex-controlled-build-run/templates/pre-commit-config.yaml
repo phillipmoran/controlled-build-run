@@ -1,0 +1,41 @@
+# Deterministic facts gate. Replace the placeholder hooks with the repository's real
+# commands. Keep roborev-clean wired exactly once and always_run.
+repos:
+  - repo: local
+    hooks:
+      - id: typecheck-lint-format
+        name: static checks (EDIT ME)
+        entry: >-
+          sh -c 'echo "EDIT .pre-commit-config.yaml: wire static checks" >&2; exit 1'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: tests
+        name: tests (EDIT ME)
+        entry: >-
+          sh -c 'echo "EDIT .pre-commit-config.yaml: wire tests" >&2; exit 1'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: plan-coherence
+        name: CBR plan matches branch and staged production work
+        entry: ./.cbr-codex/scripts/plan-coherence.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: roborev-clean
+        name: roborev (no unfinished reviews on this branch)
+        entry: ./.cbr-codex/scripts/roborev-clean-gate.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: gitleaks
+        name: gitleaks (staged secrets)
+        entry: gitleaks protect --staged --redact
+        language: system
+        pass_filenames: false
+        always_run: true

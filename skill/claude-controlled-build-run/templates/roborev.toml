@@ -1,0 +1,26 @@
+agent = "codex"
+review_agent = "codex"
+review_model = "gpt-5.6-sol"
+review_reasoning = "standard"
+snapshot_dir = ".roborev"
+review_guidelines = """
+# <REPO NAME> — review guidelines  (EDIT ME: cbr.sh arm installed this skeleton)
+
+Binding docs to read on every review: <list your repo's binding docs — the
+engineering principles, the contracts, whatever IS the spec here>.
+
+Cite a specific principle, invariant, or contract type per finding. Vague style
+commentary with no cited rule is not a finding. Severity: load-bearing | minor |
+nitpick. Default to fewer, higher-quality findings.
+
+Surface (load-bearing):
+- <your repo's cardinal invariants — the things that must never regress>
+- Untested logic in production packages (TDD is the law; declared exempt zones
+  are verified by their named substitute proof instead).
+
+Do NOT flag:
+- <known throwaway / owner-eyeballed zones>
+
+Tests default to ZERO inline comments; production comments state rationale
+non-obvious at the site, never narration of the diff.
+"""

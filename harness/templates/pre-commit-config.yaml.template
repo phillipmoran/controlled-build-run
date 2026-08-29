@@ -1,0 +1,60 @@
+# .pre-commit-config.yaml — TEMPLATE (controlled-build-run-kit).
+#
+# The deterministic commit gate. These are FACTS (not LLM opinions), so they are
+# allowed to BLOCK a commit. Arm with `pre-commit install` (or `uv run pre-commit
+# install` if you manage pre-commit through uv). A rare false positive gets a
+# conscious inline suppression (`# type: ignore[...]`, `# noqa: ...`), never `--no-verify`.
+#
+# PORTING CHECKLIST:
+#   1. Replace the format/lint/type/test hooks with YOUR repo's real commands
+#      (the ones below are placeholders). Remove any that don't apply.
+#   2. KEEP the `roborev-clean` hook verbatim — it backs the close-every-review law,
+#      and it needs scripts/roborev-clean-gate.sh present + executable at the repo root.
+#   3. KEEP `gitleaks` only if you install it (`brew install gitleaks`); else delete it.
+#   4. See examples/reference-.pre-commit-config.yaml for the real, worked reference version
+#      (ruff format + ruff lint + mypy + pytest + 3 web hooks + roborev-clean + gitleaks).
+
+repos:
+  - repo: local
+    hooks:
+      # --- TODO: your deterministic checks (replace these placeholders) ---------
+      - id: format-check
+        name: format (check only, never rewrites)
+        entry: 'echo "TODO your formatter check command"'   # e.g. uv run ruff format --check . | npm run format:check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: lint
+        name: lint
+        entry: 'echo "TODO your lint command"'                # e.g. uv run ruff check . | npm run lint
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: typecheck
+        name: types
+        entry: 'echo "TODO your typechecker command"'         # e.g. uv run mypy <pkgs> | npm run typecheck
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: tests
+        name: tests
+        entry: 'echo "TODO your test command"'                # e.g. uv run pytest <pkgs> | npm test
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # --- KEEP VERBATIM: the close-every-review gate (needs scripts/roborev-clean-gate.sh) ---
+      - id: roborev-clean
+        name: roborev (no open reviews on this branch)
+        entry: ./scripts/roborev-clean-gate.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # --- OPTIONAL: staged-secret scan (delete if you don't install gitleaks) ---
+      - id: gitleaks
+        name: gitleaks (staged secrets)
+        entry: gitleaks protect --staged --redact
+        language: system
+        pass_filenames: false
+        always_run: true

@@ -1,0 +1,199 @@
+agent = "claude-code"
+review_agent = "claude-code"
+review_model = "claude-sonnet-4-6"
+# Reviewer dial only — builders carry their model on their own command line.
+# roborev vocabulary: fast/standard/medium/thorough/maximum. "standard"
+# (operator, 2026-06-11): a wrong finding costs a builder a forced fix round,
+# so the reviewer never runs at minimum effort. Effort is a small slice of
+# review cost anyway — the model swap to Sonnet is where the savings live.
+review_reasoning = "standard"
+snapshot_dir = ".roborev"
+review_guidelines = """
+# the origin host project — review guidelines
+
+This is a clean-room rebuild. The prior repo became spaghetti; the origin host
+exists to escape that. The orientation docs to read on every review are
+`CONSTITUTION.md`, `ENGINEERING.md`, `GLOSSARY.md`, `AGENTS.md`, and any
+contract file under `contracts/` that the diff touches. Findings should
+cite a specific principle by name (e.g. "violates the path-addressability
+principle") or a specific contract rule (e.g. "violates short-term Rule
+7"). Vague style commentary without a cited principle is not a finding.
+
+## Severity discipline
+
+Three levels:
+- **load-bearing**: violates a binding principle in a way that compounds
+  (would create wound territory if left). Cite the principle.
+- **minor**: small drift from discipline that doesn't compound but is
+  worth noting.
+- **nitpick**: stylistic preference; not a discipline issue.
+
+Default to fewer findings of higher quality. The closeout review pass
+at session end also runs against the discipline — your job is to catch
+things in the fresh-diff window that the closeout would otherwise catch
+later.
+
+## What to surface
+
+- **Contract violations.** Code that asserts a shape, rule, or behavior
+  that is not in the relevant contract (per CONSTITUTION #4
+  "contracts-as-rules + stop-and-surface"). If a populated contract
+  exists for the touched entity/system and the code contradicts a rule,
+  that is a bug.
+- **Duplication across packages or Places.** Per ENGINEERING #3 (layered
+  dependencies), #7 (global vs per-Place), and #8 (single owner per
+  entity). The prior repo had three diverging move handler
+  implementations (87 / 21 / 35 lines) — that pattern is the canonical
+  wound.
+- **Shadow collections (derive-don't-sync).** Per the derive-don't-sync
+  principle: flag a second collection keyed by an id you already hold —
+  a roster, a memory map, a positions dict, a ledger, all keyed by hero
+  id — that is kept in agreement by hand (pruned or appended in lockstep
+  at call sites) instead of derived from one source at the moment of use.
+  This is the crash class behind the respawn `KeyError`; drift on death /
+  respawn / leaving a Place is a bug even before it crashes. A genuinely
+  unavoidable parallel collection is acceptable only when exactly one
+  seam asserts its invariant against the source and fails loud and by
+  name there.
+- **Size budget breaches.** Per ENGINEERING #1: files >500 lines (target
+  cap), methods >80 lines (target cap), classes >300 lines (target cap).
+  Hard caps at 1500/200/1000. Surface BOTH target and hard-cap breaches;
+  target breaches are minor, hard-cap breaches are load-bearing.
+- **Path-addressability violations.** Generic file names
+  (`utils.py`, `helpers.py`, `manager.py`, `misc.py`, catch-all
+  `utils/` or `misc/` folders), files that hide what's inside, or names
+  that restate the directory (e.g. `canon_world.py` inside
+  `claw-clans-canon`). Per ENGINEERING #2 and AGENTS.md `<naming>`.
+- **The word "intent" outside the Decision Lens.** Reserved (the operator,
+  2026-06-11): "intent" names the third Decision Lens field and nothing
+  else in the game (see GLOSSARY.md). Flag any table, column, route,
+  type, or prose that uses intent/intents for anything else — especially
+  the outside write path (suggest `write_inbox` / `world_writes`).
+  Decision Lens usages (attention, significance, intent) are correct and
+  stay.
+- **Dead code.** Unreferenced functions, classes, imports, or files. Per
+  ENGINEERING #10 "Delete the dead."
+- **Inline imports inside function bodies.** The classic circular-
+  workaround tech-debt smell (`def foo(): from .bar import baz`). Per
+  ENGINEERING #3.
+- **`engine` / `agent` / `canon_X` imports.** The two paid-for naming
+  wounds. Probity blocks these at write-time, but RoboRev as backup.
+- **Mock-heavy tests.** Per ENGINEERING #5: prefer integration over unit;
+  test user-visible behavior, not internal call shapes; fixtures from
+  sampled production shapes, not hand-constructed ones.
+- **Provisional / placeholder rules that landed without the surface-to-
+  operator protocol.** A file under `tests/placeholders/` must (a) have a
+  `_until_<thing>` filename, (b) a failure message starting with "STOP"
+  and naming the surface-to-the operator step, and (c) a "WHEN THIS TEST FIRES"
+  docstring section with the protocol. Per ENGINEERING #2.
+- **Security holes at the player-view seam.** This applies ONLY to the
+  outside-facing seam — `packages/player-view/` and
+  `contracts/player-view/` — not to engine-internal code (see the matching
+  "do not flag" note below). The seam is where untrusted callers, login,
+  and the sight boundary live, so security findings here are real. Hold
+  them to the same bar as every other finding: few and high-quality, each
+  one naming the contract or design document it protects and describing
+  the concern in your own words. Do NOT cite a rule by its number — name
+  the file instead and say what it requires (rule numbers churn; the file
+  name is the stable handle). A generic "consider validating X" that names
+  no document is still not a finding. Surface these:
+  - **Acting identity taken from the request body instead of the signed-in
+    caller.** Who is acting must come from the session / bearer token,
+    never from a field the caller put in the payload — otherwise one hero
+    can forge another hero's action. See `contracts/player/player.md` and
+    the API hardening notes in `docs/_design/api/api-shape.md`.
+  - **A read that hands a player raw world or place state** instead of the
+    saved, already-sight-filtered per-turn view. An event a hero could not
+    perceive must never reach that player, not even buried deep in the
+    payload. See `contracts/event-visibility/event-visibility.md` and
+    `contracts/player-view/player-view.md`.
+  - **A read or write route with no login requirement.** Every Player-View
+    route sits behind the bearer security scheme; a route that omits it is
+    an unlocked door. See `contracts/player-view/openapi.v1.yaml`.
+  - **A write that trusts the caller's retry key as more than an opaque
+    string** — reading meaning out of it, or skipping the "one accepted
+    action per hero per turn" guard. See `contracts/player/player.md` and
+    `docs/_design/api/api-shape.md`.
+  - **Hero-authored text treated as trusted** — flowed into a stored
+    payload, a log line, or an LLM prompt without being marked untrusted.
+    Route these to
+    `docs/_future-work/2026-06-08T2323Z-untrusted-llm-text-content-safety.md`.
+
+## What to NOT flag (the origin host-specific tuning)
+
+- **No `__init__.py` in subdirectory packages.** the origin host uses Python 3
+  implicit namespace packages. `heroes/prompts/`,
+  `heroes/prompts/turn_by_turn/`, `heroes/memory/`, and the
+  corresponding `tests/` subdirs intentionally have no `__init__.py`.
+  Tests verify the imports work. Do not surface "missing __init__.py."
+- **Frozen dataclasses with `__post_init__` validation** raising
+  `ValueError` (e.g. Hero, DecisionLens, Class). This is the standard
+  the origin host pattern for enforcing contract rules at construction time per
+  the enforcement principle (CONSTITUTION #5).
+- **Implementation constants in code (e.g. `_SHORT_TERM_CAP = 10`).**
+  Contract states "size limit in turns"; the cap number lives in code.
+  Do not suggest "move 10 into the contract." That violates the
+  rule-vs-implementation discipline (contracts/AGENTS.md).
+- **`UnknownClassError` and similar typed exceptions** raised by lookup
+  functions. Typed exceptions carry information; do not suggest "wrap as
+  ValueError" — the typed signal is intentional.
+- **`from None` in exception re-raising** (e.g. `raise UnknownClassError(...) from None`). Suppresses the chained
+  exception when the caller cares about the typed surface, not the
+  internal KeyError. Intentional.
+- **Helper functions in test files** like `_make_entry()` used for
+  fixture setup across multiple tests. Reduces duplication; not a test
+  smell.
+- **`tuple` as a snapshot container** (vs `list`) for sequences of
+  frozen entries (e.g. `ShortTermMemory.entries`). Signals snapshot-like
+  immutability of past entries while the container layer can rotate the
+  whole tuple via reassignment.
+- **`Optional[T] = None` defaults** for genuinely optional fields. Per
+  Python convention and contract usage.
+- **Security findings on engine-internal code.** "Engine-internal" means
+  the game-simulation code that has no door to the outside world — no
+  network endpoint, no login, no caller you don't already trust, no text
+  typed in by an outsider. In this repo that is everything under
+  `packages/` and `contracts/` EXCEPT the player-view seam
+  (`packages/player-view/` and `contracts/player-view/`). The seam is the
+  one outside-facing surface and is covered under "What to surface" above.
+  On engine-internal code there is no attacker on the other side, so its
+  inputs are trusted by construction: do NOT raise "consider validating
+  X", "sanitize this", "add an auth check", or similar boundary findings
+  there. Save security attention for the seam.
+- **Provider drift suggestions.** STACK.md pins MiniMax-M3 as the
+  production LLM provider. Do not suggest "consider Anthropic or
+  OpenAI as alternatives" — the provider is locked, and provider
+  swaps require explicit STACK.md edits.
+- **Suggestions to add `__init__.py` to make a folder "explicit."** See
+  above — implicit namespace packages are the intentional pattern.
+- **Compile/import errors.** RoboRev sees only the diff, not the full
+  package context. Trust the test suite and Probity for those. Focus on
+  logic, architecture, and contract adherence.
+- **WHAT-vs-WHY comment discipline.** Do not flag a comment or docstring
+  for describing WHAT instead of WHY (the why-comments-only principle in
+  ENGINEERING.md). Comment polish is a write-time and closeout-review
+  concern, not a gating one — the closeout pass reads ENGINEERING.md and
+  remains the backstop. Findings on the architecture, contracts,
+  duplication, and dead code the diff introduces still stand.
+
+## Provider note
+
+The runtime LLM provider for game heroes is MiniMax-M3 via an
+OpenAI-compatible interface (per STACK.md). The review agent is a
+separate concern — RoboRev itself uses whatever model the Claude Code
+CLI is configured with. Reviews about runtime LLM choice should cite
+STACK.md.
+
+## Cross-references
+
+When citing principles, prefer name-based citations:
+- "violates the path-addressability principle" (good)
+- "violates ENGINEERING rule 2" (rots when principles renumber)
+
+When citing contract rules, name the file and say what the rule requires —
+not its number (numbers churn as rules are added or reordered; the file
+name is the stable handle):
+- "violates the sight boundary in event-visibility.md" (specific, durable)
+- "violates short-term Rule 7" (rots when the rules renumber)
+- "this is wound territory" (vague)
+"""
