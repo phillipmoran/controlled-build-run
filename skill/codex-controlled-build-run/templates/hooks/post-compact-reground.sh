@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Whole, role-aware reinjection after a PostCompact marker. Fail-open.
+# Diet re-injection after a PostCompact marker: identity note, house rules,
+# the active contract, the ledger tail, and POINTERS to the law files — not
+# the law files themselves (the v1 whole-file payload spent most of the fresh
+# window re-pasting stable on-disk text). Fail-open.
 set -uo pipefail
 
 HANDOFF_GUARD=0
+LEDGER_TAIL_LINES=80          # how much of progress.md rides along
+REGROUND_BUDGET_BYTES=49152   # stated diet budget for a realistic payload
 
 command -v jq >/dev/null 2>&1 || exit 0
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
@@ -19,6 +24,7 @@ skill="$root/.agents/skills/codex-controlled-build-run/SKILL.md"
 [ -f "$skill" ] || skill="$root/skills/codex-controlled-build-run/SKILL.md"
 refs="$(dirname "$skill")/references"
 core="$refs/cbr-core"
+[ -d "$core" ] || core="$root/skills/cbr-core"
 # Sibling teaching skills, resolved the same two ways the leaf skill is: an
 # installed copy first, then a repository source copy. Injected mid-build only.
 complexity="$root/.agents/skills/cyclomatic-complexity/SKILL.md"
@@ -30,7 +36,7 @@ case "$plan_rel" in /*|../*|*/../*) exit 0;; esac
 plan="$root/$plan_rel"
 plan_dir="$(dirname "$plan")"
 
-note="Context was compacted. The controlled build is being re-grounded automatically from durable files. You have ALREADY booted and the harness is ALREADY armed: do not rerun boot, arm, doctor, or a file-reading orientation ritual merely because compaction occurred. Continue the active plan from its current phase using the complete injected material below."
+note="Context was compacted. Re-grounding: the house rules, the active contract, and the ledger tail are below, whole; the law files are POINTED AT, not pasted — re-read the relevant one from disk before any contract-shaped decision (review cadence, merge gate, scope, TDD sequencing). You have ALREADY booted and the control plane is ALREADY armed: do not rerun boot, arm, doctor, or a file-reading orientation ritual merely because compaction occurred. Continue the active plan from its current phase; the write-time and commit-time gates fire regardless of what you remember."
 if [ "${HANDOFF_GUARD:-0}" = "1" ]; then
   note="$note Do not switch to a newest handoff from a prior session; the active plan supersedes it for this run."
 fi
@@ -43,48 +49,69 @@ inject() {
 $(cat "$2")"
 }
 
-if [ -f "$config" ]; then
+# House rules: the SHORT binding docs, whole. reinjectionDocs (when set) is
+# the port's own short list; the default is constitution + routing map only.
+if [ -f "$config" ] && jq -e '.reinjectionDocs' "$config" >/dev/null 2>&1; then
   while IFS= read -r doc; do
-    [ -n "$doc" ] && inject "$doc" "$root/$doc"
+    [ -n "$doc" ] && inject "$doc (house rules — binding, injected whole)" "$root/$doc"
   done < <(jq -r '.reinjectionDocs[]? // empty' "$config" 2>/dev/null)
 else
-  for doc in CONSTITUTION.md ENGINEERING.md VISION.md AGENTS.md; do
-    inject "$doc" "$root/$doc"
+  for doc in CONSTITUTION.md AGENTS.md; do
+    inject "$doc (house rules — binding, injected whole)" "$root/$doc"
   done
 fi
-[ -f "$skill" ] && inject "codex-controlled-build-run SKILL.md" "$skill"
+
+pointers=""
+add_ptr() { # $1 = absolute path, $2 = one-line why
+  [ -f "$1" ] && pointers="$pointers
+- ${1#$root/} — $2"
+  return 0
+}
+add_ptr "$root/ENGINEERING.md" "binding principles"
+add_ptr "$root/VISION.md" "binding principles"
+add_ptr "$skill" "the build process router"
 
 role=""
 if [ -f "$plan" ]; then
   role="$(sed -nE 's/.*\*\*Run type:\*\*[[:space:]]*(orchestrator|workstream).*/\1/p' "$plan" | head -1)"
-  inject "CBR core policy" "$core/policy.md"
-  inject "CBR core strand" "$core/strand.md"
-  inject "CBR core reviews" "$core/reviews.md"
-  inject "CBR core judgment" "$core/judgment.md"
-  inject "CBR core glossary (the harness's own words — use them exactly)" "$core/GLOSSARY.md"
+  add_ptr "$core/policy.md" "control-plane law"
+  add_ptr "$core/strand.md" "strand law"
+  add_ptr "$core/reviews.md" "review cadence law"
+  add_ptr "$core/judgment.md" "decision routing"
+  add_ptr "$core/GLOSSARY.md" "the control plane's exact vocabulary"
   case "$role" in
     orchestrator)
-      inject "CBR core fleet mode (role-specific)" "$core/modes/fleet.md"
-      inject "Codex fleet mechanisms (role-specific)" "$refs/fleet.md"
+      add_ptr "$core/modes/fleet.md" "fleet mode (role-specific)"
+      add_ptr "$refs/fleet.md" "provider fleet mechanisms"
       ;;
-    workstream)
-      inject "CBR core build loop (role-specific)" "$core/build-loop.md"
+    *)
+      add_ptr "$core/build-loop.md" "build loop (role-specific)"
       branch="$(git -C "$root" branch --show-current 2>/dev/null || true)"
       builder_pattern='^stream/'
       [ -f "$config" ] && builder_pattern="$(jq -r '.builderBranchPattern // "^stream/"' "$config" 2>/dev/null || printf '^stream/')"
+      # solo merge law never reaches a fleet builder's branch
       if ! [[ "$branch" =~ $builder_pattern ]]; then
-        inject "CBR core solo mode (role-specific)" "$core/modes/solo.md"
+        add_ptr "$core/modes/solo.md" "solo mode (role-specific)"
       fi
-      inject "Codex workstream mechanisms (role-specific)" "$refs/build-loop.md"
+      add_ptr "$refs/build-loop.md" "provider workstream mechanisms"
       ;;
   esac
-  inject "cyclomatic-complexity SKILL.md (the complexity ceiling is a DETERMINISTIC pre-commit gate — it stops the commit rather than advising you. Over the bar you have exactly two moves, each ending the block in one step: refactor under it, or exempt with a one-line reason.)" "$complexity"
-  inject "ACTIVE PLAN ($plan_rel)" "$plan"
+  add_ptr "$complexity" "the complexity ceiling (deterministic commit gate)"
+  inject "ACTIVE CONTRACT ($plan_rel) — an autonomous build is in progress; re-read this and continue from the current phase" "$plan"
   inject "DURABLE FINDINGS ($(dirname "$plan_rel")/findings.md)" "$plan_dir/findings.md"
-  inject "SESSION PROGRESS ($(dirname "$plan_rel")/progress.md)" "$plan_dir/progress.md"
+  [ -f "$plan_dir/progress.md" ] && note="$note
+
+=== LEDGER TAIL ($(dirname "$plan_rel")/progress.md, last $LEDGER_TAIL_LINES lines — exactly where you left off) ===
+$(tail -n "$LEDGER_TAIL_LINES" "$plan_dir/progress.md")"
 fi
 
-jq -n --arg ctx "$note" --arg event "$event" \
-  '{hookSpecificOutput: {hookEventName: $event, additionalContext: $ctx}}' || exit 0
+[ -n "$pointers" ] && note="$note
+
+=== LAW FILE POINTERS (re-read from disk before contract-shaped decisions; deliberately not pasted) ===$pointers"
+
+# payload via STDIN, never as an argument — an oversized findings.md must not
+# hit the OS per-argument limit and kill the one lifeline this hook is
+printf '%s' "$note" | jq -Rs --arg event "$event" \
+  '{hookSpecificOutput: {hookEventName: $event, additionalContext: .}}' || exit 0
 rm -f "$marker"
 exit 0

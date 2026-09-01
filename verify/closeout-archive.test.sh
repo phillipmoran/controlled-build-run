@@ -691,7 +691,7 @@ build_merged_strand() {
   printf '**Branch:** %s\n\nstrand plan %s\n' "$branch" "$token" > "$wt/task_plan.md"
   printf 'readback %s\n' "$token" > "$wt/progress.md"
   printf 'findings %s\n' "$token" > "$wt/findings.md"
-  printf '%s complete %s\n' "$branch" "$token" > "$wt/DONE.marker"
+  printf '%s complete %s\n' "$branch" "$token" > "$wt/DONE-stream-live.marker"
   local gw="git -C $wt -c user.email=t@t -c user.name=t"
   $gw add -A >/dev/null; $gw commit -qm work
   $g merge -q --no-ff "$branch" -m "merge $branch" >/dev/null
@@ -735,7 +735,7 @@ set -e
   || fail "the Claude leaf could not close out a strand that is merged, unoccupied and clean: $(cat "$tmp/s.out")"
 
 sarch="$srepo/docs/streams/archive/live"
-for r in task_plan.md progress.md findings.md DONE.marker; do
+for r in task_plan.md progress.md findings.md DONE-stream-live.marker; do
   [ -f "$sarch/$r" ] \
     || fail "the Claude leaf's closeout left no $r in $sarch — the strand's records died with the worktree: $(cat "$tmp/s.out")"
   grep -q CLAUDETOKEN "$sarch/$r" \
@@ -743,10 +743,10 @@ for r in task_plan.md progress.md findings.md DONE.marker; do
 done
 [ -f "$sarch/live.commits" ] \
   || fail "the watch digest was not archived, and the reap has now deleted the only other copy"
-[ -e "$srepo/DONE.marker" ] \
-  && fail "the merged strand's DONE.marker is still on the base — the next strand folds the base in and its watcher latches on a completion that is not its own"
-git -C "$srepo" ls-files --error-unmatch DONE.marker >/dev/null 2>&1 \
-  && fail "DONE.marker is gone from the base worktree but still tracked in the index — the deletion was not staged, so the closeout commit leaves it behind"
+[ -e "$srepo/DONE-stream-live.marker" ] \
+  && fail "the merged strand's DONE-stream-live.marker is still on the base — the next strand folds the base in and its watcher latches on a completion that is not its own"
+git -C "$srepo" ls-files --error-unmatch DONE-stream-live.marker >/dev/null 2>&1 \
+  && fail "DONE-stream-live.marker is gone from the base worktree but still tracked in the index — the deletion was not staged, so the closeout commit leaves it behind"
 grep -q '^\*\*Branch:\*\* main$' "$srepo/task_plan.md" \
   || fail "the base plan still names the dead strand's branch — every session opening here re-grounds onto a branch that no longer exists: $(sed -n 1p "$srepo/task_plan.md")"
 [ -d "$swt" ] && fail "the Claude leaf reported success but left the worktree standing"
@@ -793,14 +793,14 @@ set -e
   || fail "the Codex leaf could not close out a strand that is merged, unoccupied and clean: $(cat "$tmp/z.out")"
 
 zarch="$zrepo/docs/streams/archive/live"
-for r in task_plan.md progress.md findings.md DONE.marker; do
+for r in task_plan.md progress.md findings.md DONE-stream-live.marker; do
   [ -f "$zarch/$r" ] \
     || fail "the Codex leaf's closeout left no $r in $zarch: $(cat "$tmp/z.out")"
   grep -q CODEXTOKEN "$zarch/$r" \
     || fail "$zarch/$r does not hold the STRAND's bytes — the base's own copy was archived instead"
 done
-[ -e "$zrepo/DONE.marker" ] \
-  && fail "the Codex leaf left the merged strand's DONE.marker on the base"
+[ -e "$zrepo/DONE-stream-live.marker" ] \
+  && fail "the Codex leaf left the merged strand's DONE-stream-live.marker on the base"
 grep -q '^\*\*Branch:\*\* main$' "$zrepo/task_plan.md" \
   || fail "the Codex leaf did not reground the base plan: $(sed -n 1p "$zrepo/task_plan.md")"
 [ -d "$zwt" ] && fail "the Codex leaf reported success but left the worktree standing"

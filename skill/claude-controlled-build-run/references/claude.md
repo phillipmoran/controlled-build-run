@@ -5,12 +5,12 @@ This file is the Claude Code side of the CBR core+leaf split. The law lives in
 mechanisms the law deliberately genericized — exact commands, flags, paths,
 tool names, model pins, and the scars that ratified them. Read each section
 next to its core counterpart; nothing here restates law, and nothing in core
-names these primitives. As shipped, the reference values are: worktrees `cockpit-<slug>`, toolchain
-pnpm/vitest/eslint/prettier/tsc, binding docs ENGINEERING.md + AGENTS.md +
-VISION.md — your host's porting header (see `PORTING.md`) records the values
-that replace them.
+names these primitives. In the reference host, per its porting header,
+worktrees are `cockpit-<slug>`, the toolchain is pnpm/vitest/eslint/prettier/tsc
+(the skill's original uv/pytest/ruff/mypy names read through that map), and the
+binding docs are ENGINEERING.md + AGENTS.md + VISION.md.
 
-## 1. Harness wiring
+## 1. Control-plane wiring
 
 Law: `references/core/policy.md` — this section carries the Claude-side hook
 systems and the six pieces' concrete names.
@@ -27,12 +27,12 @@ deterministic gate) and `post-commit` + `post-rewrite` (trigger the RoboRev
 review, installed by `roborev init`).
 
 The six pieces, concretely (spec, verify commands, and install steps in
-`references/harness-spec.md`):
+`references/agent-harness-spec.md`):
 
 1. **planning-with-files** skill available; the plan is `task_plan.md`.
 2. **Probity** — `probity.config.ts` at the repo root + the PreToolUse hook
    running `npx --yes @nizos/probity --agent claude-code`. If Probity blocks
-   every call, a worktree's harness is bricked, or the config won't load, use
+   every call, a worktree's control plane is bricked, or the config won't load, use
    the **`probity-doctor`** skill — config-load fails closed, and the usual
    cause is an unprovisioned worktree with no `node_modules`.
 3. **RoboRev** — `.roborev.toml` at the root + the `roborev init` git hooks +
@@ -41,27 +41,26 @@ The six pieces, concretely (spec, verify commands, and install steps in
 4. **Session sweep** — SessionStart hook
    `.claude/hooks/roborev-session-sweep.sh` listing open FAIL reviews at boot.
 5. **pre-commit checks** — `.pre-commit-config.yaml` (format check alongside
-   lint/types/tests, plus the `roborev-clean` gate backed by
-   `scripts/roborev-clean-gate.sh`), and the git hook actually installed
+   lint/types/tests; per-commit reviews are advisory since the 2026-08-31
+   cadence move), and the git hook actually installed
    (`pre-commit install` writes `.git/hooks/pre-commit`; the skill's original
    wrapper was `uv run pre-commit install` — read through the porting map).
-   Most often present-but-not-armed: check `.git/hooks/pre-commit`. The armed
-   check for gate inheritance is
-   `grep -q roborev-clean .pre-commit-config.yaml` on the branch.
+   Most often present-but-not-armed: check `.git/hooks/pre-commit`.
 6. **Post-compaction re-ground** — `.claude/hooks/post-compact-reground.sh`,
    wired as a **SessionStart** hook with `matcher: "compact"` (again: not
    `PostCompact`). The canonical script is
    `templates/hooks/post-compact-reground.sh` (byte-identical to the live
-   hook, identity-gated by `verify/core-mirrors.test.sh`); install/verify steps in
-   `references/harness-spec.md` §6.
+   hook, identity-gated by `kit/export.sh --check`); install/verify steps in
+   `references/agent-harness-spec.md` §6.
 
    The hook's mid-build payload carries **two sibling skills, not one**:
    `TDD_REL` and `COMPLEXITY_REL` (`skills/cyclomatic-complexity/SKILL.md`),
    each injected whole and only when a plan is present, for both roles. The
-   complexity skill is there for the same reason TDD is: the complexity
-   ceiling in `references/core/policy.md` is a deterministic pre-commit gate,
-   so a builder that has drifted past the rule meets it as a blocked commit —
-   the most expensive moment to learn it. Both paths are PORTING knobs at the
+   complexity skill is there for the same reason TDD is — in projects that
+   wire the optional ceiling (`references/core/policy.md`; per-project knob,
+   not core law): there it is a deterministic pre-commit gate, so a builder
+   that has drifted past the rule meets it as a blocked commit — the most
+   expensive moment to learn it. Both paths are PORTING knobs at the
    top of the hook, and both are `[ -f ]`-guarded, so a port that installs
    neither skill still re-grounds cleanly. The payload cases are pinned by
    `kit/verify/reground-gate.test.sh` (a pre-commit gate), which asserts the
@@ -69,7 +68,7 @@ The six pieces, concretely (spec, verify commands, and install steps in
    its ABSENCE when no plan is present.
 
 **The compaction triple** (operator-set; the values were first tuned in
-claw-clans-canon's settings) lives in `.claude/settings.json` of every CBR
+the reference host's settings) lives in `.claude/settings.json` of every CBR
 session — the stream template carries it, so provisioned worktrees inherit it,
 and `claude --bg` sessions read the settings of the repo they're rooted in:
 
@@ -80,15 +79,15 @@ and `claude --bg` sessions read the settings of the repo they're rooted in:
 ```
 
 The 0.85 threshold fires compaction at ~297k, on our terms with headroom; on a
-model with a smaller context window the harness clamps to the model's own
+model with a smaller context window the Claude Code agent harness clamps to the model's own
 limit, so the triple is safe across the whole dial. `cbr.sh doctor` checks all
 three values.
 
 Fail direction, applied to these hooks: a hook whose OWN infra is missing
 (RoboRev daemon unreachable from the surfacing gate, jq absent in the
 re-ground) exits silently — fail open. A fact the hook OBSERVES fails closed:
-the `roborev-clean` pre-commit gate blocks on any open/queued/running/crashed
-review, and Probity's config-load failure blocks every gated write (that
+the merge-path review gate blocks a merge on any open blocking finding,
+and Probity's config-load failure blocks every gated write (that
 fail-closed is what `probity-doctor` exists to repair).
 
 ## 2. Strand mechanics
@@ -98,7 +97,7 @@ provisioning and isolation mechanics.
 
 `skills/claude-controlled-build-run/scripts/cbr.sh provision <slug> <branch>`
 runs the strand setup end to end: worktree + branch, the gitignored deps, the
-harness-spec §7 allowlist, and the armed-checks — printing PASS/FAIL per check
+agent-harness-spec §7 allowlist, and the armed-checks — printing PASS/FAIL per check
 and failing closed. It also resets the worktree's `progress.md` to a
 stream-only log, so the inherited fleet log doesn't get archived at closeout
 as the stream's narrative. The live Probity probe stays yours to run
@@ -120,7 +119,7 @@ that with the link-only mechanism.)
 **The worktree-local allowlist** — `.claude/settings.local.json`, gitignored
 and worktree-scoped — is the attended-run fallback for permission prompts.
 Canonical contents, verify command, and the `--model`-alias caveat are in
-`references/harness-spec.md` §7. It does not weaken Probity, which is a
+`references/agent-harness-spec.md` §7. It does not weaken Probity, which is a
 PreToolUse hook that fires regardless of the permission layer; under
 `--dangerously-skip-permissions` the allowlist is inert.
 
@@ -154,9 +153,9 @@ review (status `failed`, distinct from a FAIL verdict) is re-run with
 the orchestrator's merge audit is `roborev list --branch <branch>`. The hooks
 that surface reviews in-session are `.claude/hooks/roborev-gate.sh`
 (PostToolUse) and `.claude/hooks/roborev-session-sweep.sh` (SessionStart); the
-deterministic wall is `scripts/roborev-clean-gate.sh` in the pre-commit
-config. Close-discipline enforcement (the gate refusing the next commit while
-any review is open/queued/running) has been mechanical since 2026-06-12.
+deterministic wall moved to the merge path on 2026-08-31 (per-commit reviews
+advisory; a merge with open blocking findings refuses). Commit-time
+close-discipline was mechanical 2026-06-12 → 2026-08-31.
 
 **Probity's gated tree** is the `packages/**` glob under the session's own
 root (in this repo, read through the porting header's workspace mapping), in
@@ -191,22 +190,24 @@ The file channel: the builder drops **`ASK-ORCH.md`** at its worktree root
 assume) and keeps building; the orchestrator answers via **`ORCH-ANSWER.md`**
 at the builder root plus the plan's decision log. The terminal markers in this
 repo, per the porting header and the fleet task_plan, are **`NEEDS-OPERATOR.md`**
-(human-only blocker), **`HARNESS-BROKEN.marker`** (guard failure), and
-**`DONE.marker`** (completion), all at the worktree root.
+(human-only blocker), **`CONTROL-PLANE-BROKEN.marker`** (guard failure), and
+**`DONE-<branch>.marker`** (completion — named for the branch, `/`→`-`),
+all at the worktree root.
 
 ## 5. The model dial
 
 Law: `references/core/policy.md` (the dial principle — tier split, one pin per
 layer, cross-family review, explicit launch). These are the current pins.
-Operator-ratified reference pins (re-ratify per host):
+operator-ratified 2026-06-12 (supersedes the 2026-06-11 dial; builder +
+reviewer entries re-ratified 2026-07-03):
 
 - **Orchestrator** — Fable 5 (`claude-fable-5`). Judgment work only: plans,
   dispatches, monitors, merge gates, merges to main. Pinned in
   `.claude/settings.json` `"model"`.
 - **Builders** — `--model claude-sonnet-5` at `--effort medium`, set
-  explicitly on every launch, never inherited. Operator-set: pick the
-  strongest dial your account's capacity sustains (the reference host ran
-  builders at Sonnet 5 @ medium, earlier @ high). Builders run as on-plan
+  explicitly on every launch, never inherited. operator-set in the
+  machine-2 resume handoff (usage crunch), superseding the fable-5 dial from
+  earlier that day; the v1 build ran Sonnet 5 @ high. Builders run as on-plan
   `--bg` sessions, never `claude -p` / the Agent SDK (see §6). Keep the word
   **"ultracode"** in the dispatch prompt so the builder leans on multi-agent
   workflows for substantive sub-tasks.
@@ -236,8 +237,8 @@ script, the launch line, and the outside-watching mechanics.
 **The companion script** is
 `skills/claude-controlled-build-run/scripts/cbr.sh` — gather facts, run the
 fixed sequence, decide nothing. Subcommands: `arm <repo-path>` (once per repo:
-scaffold the full harness from `templates/` — Probity, RoboRev +
-roborev-clean gate, pre-commit skeleton, re-injection docs, push firewall —
+install the full control plane from `templates/` — Probity, RoboRev config,
+pre-commit skeleton, re-injection docs, push firewall —
 create-if-absent, ending with the operability probe); `doctor` (the standard
 pre-flight before EVERY build — read-only PASS/FAIL on all six pieces,
 including the silent killer static checks miss: an expired OAuth token, caught
@@ -246,40 +247,24 @@ with a real agent round-trip); `provision <slug> <branch>` (§2); `launch
 supervisor-registration check, surfacing model/effort before a token is
 spent — it ends by printing a REQUIRED arm directive and dropping a
 **needs-arm sentinel**); `watch <slug>` (the REQUIRED next step after launch:
-arm the fire-once trap, backgrounded as a tracked task, run twice — the bare
-watcher FIRST, then `--watchdog --cycle <id>` with the cycle id the watcher's
-armed line prints; until you arm, `cbr.sh status` reports **UNWATCHED**); `status
+arm the fire-once trap, backgrounded as a tracked task; until you arm,
+`cbr.sh status` reports **UNWATCHED**); `status
 <slug>` (one-shot ground-truth liveness: registry state, last-commit age, open
 reviews; exits non-zero on a hard-dead fact but prints facts, not a verdict);
-`fleet` (one row per live fleet session, role-aware: a captain in the primary
+`fleet` (one row per live fleet session, role-aware: the primary checkout sees
 checkout sees the whole board untagged, an orchestrator in an `integration/*`
 worktree gets a caution header and `●`/`○` ownership tags); `closeout <slug>`
 (`--into <ref>` for an integration merge; refuses a live session, unmerged
 code, and uncommitted files until a human eyeballs them via `--force-dirty`;
 archives to `docs/streams/archive/<slug>/` before reaping worktree, branch,
-and `.cbr-watch` files); `janitor` (read-only reconciliation report at merge
-gates and on request; a human approves each reap); `closeout-pending
-[<repo-or-worktree>]` (WARN-only: names every worktree whose BRANCH is fully
-merged into main — closeout owed and never run — and prints each reap command;
-skips, loudly and with the reason, any worktree carrying uncommitted files or
-with a live process rooted in it (`lsof -d cwd`), and never the primary checkout.
-`doctor` runs it as its last step, OUTSIDE `checks_failed`, because a pending
-closeout is housekeeping, not a broken harness. It asks whether the BRANCH
-reached main, where `janitor` asks whether the branch's CODE did);
-`readback [<slug-or-worktree>]` (the leaf-side mechanism for the core readback
-law in `references/core/build-loop.md` — prints `readback=present | MISSING |
-no-progress-file` for a builder's `progress.md`, where "present" requires a
-heading whose SUBJECT is the readback — it BEGINS with the word *readback*, so
-a journal entry like "P-C — readback laws in core" does not qualify — plus at least three non-blank lines under it, counting sub-headings
-(`### Mission` / `### OUT` is the law being followed, not evaded) and skipping
-fenced code blocks (a quoted template is documentation, not a readback). The
-ritual word alone does not pass. No readback STATE ever fails — all three
-exit 0 — while an unresolvable slug or path is a caller error and still exits
-non-zero, so a typo cannot read as a pass. `status` carries the fact in every
-SUMMARY where the worktree exists, INCLUDING the session-absent ones (a
-finished or dead builder is exactly when it is read): presence is deterministic and
-may be reported, faithfulness is a judgment only the dispatcher reading it
-against the plan can make — `references/core/policy.md`). Keep the
+and `.cbr-watch` files); `janitor [<repo-or-worktree>]` (read-only
+reconciliation, absorbed the old closeout-pending: names every worktree whose
+BRANCH is fully merged into main with its reap command — skipping, loudly, any
+with uncommitted files or a live process rooted in it (`lsof -d cwd`), never
+the primary checkout — then orphan branches and stale `.cbr-watch` files;
+`doctor` runs the merged-worktree half as its last step, OUTSIDE
+`checks_failed`, because a pending closeout is housekeeping, not a broken
+control plane; a human approves each reap). Keep the
 script's model/effort defaults in sync with §5.
 
 **The launch line** (run with cwd in the worktree):
@@ -333,7 +318,7 @@ stop with `claude stop <id>`.
 **Trust gate** (verified 2026-06-20): the one-time workspace-trust prompt
 stalls a `--bg` session forever — no pane to send-keys into — so make it never
 fire. Trust is keyed by the repo (the shared `.git`), not the worktree path: a
-worktree of an already-trusted repo shows no prompt (a canon worktree skipped
+worktree of an already-trusted repo shows no prompt (a reference-host worktree skipped
 it; a throwaway `/tmp` dir gated). The invariant: **dispatch only into a
 worktree of an already-trusted repo.** Trust state lives in `~/.claude.json`
 (`projects[<path>].hasTrustDialogAccepted`); `cbr.sh status` shows
@@ -363,10 +348,11 @@ and NEVER gate an exit on another session's `state` (it can stay falsely
 `working`, hanging the watch on the very bug it should catch). Plan-usage % is
 not a liveness signal.
 
-## 7. Captain mechanics
+## 7. Outside-watcher mechanics
 
-Law: `references/core/modes/captain.md` — this section carries the watcher
-line, the watch script, and the transcript tells.
+Law: `references/core/modes/fleet.md` (watcher-law section — the retired
+captain tier's folded duties) — this section carries the watcher line, the
+watch script, and the transcript tells.
 
 **The one watcher line** (silence = alarm; exits on blocker, all-done, and
 stall together):
@@ -383,11 +369,10 @@ file per orchestrator so several can't collide; the file's existence means
 
 **The watch script** is `scripts/captain-watch.sh` (ported with the
 `cockpit-<slug>` mapping); its commit digest lands in
-`.cbr-watch/<slug>.commits`, and the status file + that digest is what a
-captain reads at a wake — a full-context wake per commit was the fleet's
+`.cbr-watch/<slug>.commits`, and the status file + that digest is what the
+dispatcher reads at a wake — a full-context wake per commit was the fleet's
 biggest measured token waste. The cadence values (2026-07-07): per-builder
-stall = `--stall-secs 900` (15 min, now the default); the watcher dead-man is
-`--watchdog` at 15 min (watches the watcher, not the builder); the outer
+stall = `--stall-secs 900` (15 min, now the default); the outer
 heartbeat runs ~60 min as the all-watchers-dead backstop.
 
 **Parked vs wedged** — both show ~0% CPU, a frozen transcript, and
@@ -436,11 +421,11 @@ one by name. Both work from an unattended `--bg` builder. The probe ran a full
 round-trip between this builder and a peer session and observed:
 
 - **`SendMessage` returns immediately** with `success:true` and a `msg_id`.
-  That means *accepted for delivery* — not read, not understood, not acted on.
+  That means _accepted for delivery_ — not read, not understood, not acted on.
   There is no read receipt and no reply guarantee.
 - **The message arrives at the receiver's next tool round**, wrapped as
   `<cross-session-message from="uds:/tmp/cc-socks/<pid>.sock" from-name="..."
-  from-mode="...">`. A session that is not taking tool turns has not seen it.
+from-mode="...">`. A session that is not taking tool turns has not seen it.
 - **A cleanly finished session is restarted by one.** The probe's target had
   already reported and stopped; the message arrived as a fresh turn afterwards.
   That is what reconciles this bullet with the one above it — and it is only
@@ -452,12 +437,32 @@ round-trip between this builder and a peer session and observed:
   the human's approval; a peer cannot grant an escalation, and a peer asking
   for something that was denied in ITS session is permission laundering.
 
+**The doorbell can be HELD, and a held doorbell is silent (2026-08-28).** A
+second observation, on a fleet dispatch rather than a peer probe: an
+orchestrator's `SendMessage` to one of its own `--bg` builders was accepted and
+never arrived. The cause is the builder's own dispatch flags — a session running
+with permissions bypassed has its inbound cross-session messages HELD pending an
+approval, and an unattended builder has nobody present to give one. The sender
+sees success. The builder sees nothing. The orchestrator then reads the silence
+as a builder with nothing to say, which is exactly what a working builder looks
+like, and the channel is discovered dead only when a decision needed to reach it
+and never did.
+
+The fix belongs to the BIRTH ritual, not to dispatch: `cbr.sh provision` writes
+`"crossSessionInbound": "accept"` into the newborn's gitignored
+`.claude/settings.local.json` (§7), because a setting applied after dispatch
+reaches a session that has already read its settings. Provision asserts it
+landed. That proves the builder is born reachable. (The post-dispatch
+delivery-probe apparatus — needs-probe sentinels, a launch lock, `cbr.sh
+reachable` — was deleted 2026-08-31: it never fired in anger, and the birth
+assertion plus a real first send cover the same risk.)
+
 **The doctrine: files are the letter, messaging is the doorbell.**
 
 Everything that must survive — the plan, the scope, the decisions, the asks and
 their answers, the readback, the blockers — goes in a **file in the worktree**:
 `task_plan.md`, `progress.md`, `findings.md`, `ASK-ORCH.md` / `ORCH-ANSWER.md`,
-`DONE.marker`. Files survive a compaction, a session exit, and a machine
+`DONE-<branch>.marker`. Files survive a compaction, a session exit, and a machine
 restart; a socket keyed to a live pid survives none of the three, and the probe
 demonstrated no durability whatsoever (the socket half of that sentence is an
 inference from the observed `uds:` address, not an observation). A message is a **notification that a

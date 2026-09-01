@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Disposable component/lifecycle smoke for the portable Codex CBR harness.
+# Disposable component/lifecycle smoke for the portable Codex CBR control plane.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -33,9 +33,11 @@ pass "shared-core and Codex-leaf conformance"
 cat >"$BIN/pre-commit" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = install ]; then
-  hook="$(git rev-parse --path-format=absolute --git-path hooks/pre-commit)"
-  mkdir -p "$(dirname "$hook")"
-  printf '#!/usr/bin/env bash\nexit 0\n' >"$hook"; chmod +x "$hook"
+  for hook_type in pre-commit pre-merge-commit; do
+    hook="$(git rev-parse --path-format=absolute --git-path "hooks/$hook_type")"
+    mkdir -p "$(dirname "$hook")"
+    printf '#!/usr/bin/env bash\n# pre-commit fixture hook\nexit 0\n' >"$hook"; chmod +x "$hook"
+  done
 fi
 exit 0
 SH
@@ -117,12 +119,19 @@ open(path,'w').write(text)
 PY
 must "$CBR" record-hook-trust "$REPO"
 must git -C "$REPO" add .agents .cbr-codex.json .cbr-codex/scripts .codex .gitignore .pre-commit-config.yaml .roborev.toml AGENTS.md probity.config.ts probity-content-policy.mjs probity-content-policy.d.mts probity-verdict-parser.mjs probity-verdict-parser.d.mts probity-integration.mjs probity-integration.d.mts
-must git -C "$REPO" commit -qm harness
+must git -C "$REPO" commit -qm fixture
 printf '{"running":false}\n' >"$STATE/status.json"
 must_fail bash -c "cd '$REPO' && '$CBR' doctor '$REPO' >'$TMP/doctor-stopped.out' 2>&1"
 contains "$TMP/doctor-stopped.out" 'RoboRev daemon'
 printf '{"running":true}\n' >"$STATE/status.json"
-must "$CBR" doctor "$REPO"
+INSTALLED_CBR="$REPO/.agents/skills/codex-controlled-build-run/scripts/cbr-codex.sh"
+[ ! -d "$REPO/.agents/skills/codex-controlled-build-run/references/cbr-core" ]
+mkdir -p "$REPO/skills"
+cp -R "$SKILL/../cbr-core" "$REPO/skills/cbr-core"
+must "$INSTALLED_CBR" doctor "$REPO"
+mv "$REPO/skills/cbr-core" "$TMP/canonical-core-after-installed-doctor"
+pass "installed .agents doctor resolves the repository's canonical shared core"
+[ "${CBR_SMOKE_INSTALLED_DOCTOR_ONLY:-0}" = 1 ] && exit 0
 mv "$REPO/probity-content-policy.mjs" "$TMP/probity-content-policy.mjs"
 must_fail bash -c "cd '$REPO' && '$CBR' doctor '$REPO' >'$TMP/doctor-no-runtime-helper.out' 2>&1"
 contains "$TMP/doctor-no-runtime-helper.out" 'config or runtime helper missing'
@@ -252,8 +261,8 @@ must_fail env PATH="$BIN:$NO_JQ" bash -c "cd '$REPO' && '$CBR' doctor '$REPO' >'
 contains "$TMP/doctor-no-jq.out" 'MISSING command               jq'
 pass "arm upgrade guard, real config import, runtime dependencies, missing jq, and stopped daemon"
 
-# Compaction reinjection: whole docs + role material + all planning state,
-# with no instruction to read after compact.
+# Compaction reinjection is the DIET: house rules + contract + ledger tail
+# whole, law files as pointers only, within the hook's stated byte budget.
 for doc in CONSTITUTION.md ENGINEERING.md VISION.md; do printf '%s-CANARY\n' "$doc" >"$REPO/$doc"; done
 printf '# AGENTS\nAGENTS-CANARY\n' >"$REPO/AGENTS.md"
 printf '# task\n\n**Branch:** main  \n**Run type:** workstream\n\n- [ ] P1 — CANARY-NEXT\n' >"$REPO/task_plan.md"
@@ -266,11 +275,25 @@ printf 'COMPLEXITY-CANARY\n' >"$REPO/skills/cyclomatic-complexity/SKILL.md"
 (cd "$REPO" && printf '{"session_id":"thread-a"}\n' | CBR_REGROUND_EVENT=UserPromptSubmit .codex/hooks/post-compact-reground.sh) >"$TMP/reground.json"
 python3 -m json.tool "$TMP/reground.json" >/dev/null
 contains "$TMP/reground.json" '"hookEventName": "UserPromptSubmit"'
-for canary in CONSTITUTION.md-CANARY ENGINEERING.md-CANARY VISION.md-CANARY AGENTS-CANARY CANARY-NEXT FINDINGS-CANARY PROGRESS-CANARY 'policy.md — the laws' 'strand.md — one plan' 'build-loop.md — run the build' 'reviews.md — the review layers' 'judgment.md — resolving a judgment call' 'GLOSSARY.md — the harness' 'modes/solo.md — one strand' 'Workstream build loop' COMPLEXITY-CANARY; do contains "$TMP/reground.json" "$canary"; done
-not_contains "$TMP/reground.json" 'Codex fleet orchestration'
-not_contains "$TMP/reground.json" 'modes/fleet.md — orchestrating a fleet'
-not_contains "$TMP/reground.json" 'modes/captain.md — the tier'
+for canary in CONSTITUTION.md-CANARY AGENTS-CANARY CANARY-NEXT FINDINGS-CANARY PROGRESS-CANARY 'ENGINEERING.md — binding principles' 'VISION.md — binding principles' 'policy.md — control-plane law' 'strand.md — strand law' 'build-loop.md — build loop (role-specific)' 'reviews.md — review cadence law' 'judgment.md — decision routing' 'modes/solo.md — solo mode (role-specific)' 'cyclomatic-complexity/SKILL.md — the complexity ceiling'; do contains "$TMP/reground.json" "$canary"; done
+# law BODIES must not ride along — pointers only
+not_contains "$TMP/reground.json" ENGINEERING.md-CANARY
+not_contains "$TMP/reground.json" VISION.md-CANARY
+not_contains "$TMP/reground.json" COMPLEXITY-CANARY
+not_contains "$TMP/reground.json" 'modes/fleet.md'
+not_contains "$TMP/reground.json" 'modes/captain.md'
 not_contains "$TMP/reground.json" 'Also reread'
+budget="$(sed -nE 's/^REGROUND_BUDGET_BYTES=([0-9]+).*/\1/p' "$REPO/.codex/hooks/post-compact-reground.sh")"
+payload_bytes="$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['hookSpecificOutput']['additionalContext'].encode()))" "$TMP/reground.json")"
+[ -n "$budget" ] && [ "$payload_bytes" -le "$budget" ]
+
+# a fleet builder's branch never receives solo merge law
+(cd "$REPO" && git checkout -q -b stream/smoke-probe)
+(cd "$REPO" && printf '{"session_id":"thread-stream"}\n' | .codex/hooks/mark-post-compact.sh)
+(cd "$REPO" && printf '{"session_id":"thread-stream"}\n' | CBR_REGROUND_EVENT=UserPromptSubmit .codex/hooks/post-compact-reground.sh) >"$TMP/reground-stream.json"
+contains "$TMP/reground-stream.json" 'build-loop.md — build loop (role-specific)'
+not_contains "$TMP/reground-stream.json" 'modes/solo.md'
+(cd "$REPO" && git checkout -q -)
 
 python3 - "$REPO/task_plan.md" <<'PY'
 import sys
@@ -279,34 +302,33 @@ PY
 (cd "$REPO" && printf '{"thread_id":"thread-c"}\n' | .codex/hooks/mark-post-compact.sh)
 (cd "$REPO" && printf '{"thread_id":"thread-c"}\n' | CBR_REGROUND_EVENT=SessionStart .codex/hooks/post-compact-reground.sh) >"$TMP/reground-orchestrator.json"
 contains "$TMP/reground-orchestrator.json" '"hookEventName": "SessionStart"'
-for canary in 'policy.md — the laws' 'strand.md — one plan' 'reviews.md — the review layers' 'judgment.md — resolving a judgment call' 'GLOSSARY.md — the harness' 'modes/fleet.md — orchestrating a fleet' 'Codex fleet orchestration' COMPLEXITY-CANARY; do contains "$TMP/reground-orchestrator.json" "$canary"; done
-not_contains "$TMP/reground-orchestrator.json" 'build-loop.md — run the build'
-not_contains "$TMP/reground-orchestrator.json" 'modes/solo.md — one strand'
-not_contains "$TMP/reground-orchestrator.json" 'modes/captain.md — the tier'
-not_contains "$TMP/reground-orchestrator.json" 'Workstream build loop'
+for canary in 'policy.md — control-plane law' 'strand.md — strand law' 'reviews.md — review cadence law' 'judgment.md — decision routing' 'GLOSSARY.md — the control plane' 'modes/fleet.md — fleet mode (role-specific)' 'fleet.md — provider fleet mechanisms'; do contains "$TMP/reground-orchestrator.json" "$canary"; done
+not_contains "$TMP/reground-orchestrator.json" 'build-loop.md — build loop (role-specific)'
+not_contains "$TMP/reground-orchestrator.json" 'modes/solo.md'
+not_contains "$TMP/reground-orchestrator.json" 'modes/captain.md'
+not_contains "$TMP/reground-orchestrator.json" COMPLEXITY-CANARY
 
 # The complexity sibling has TWO resolution paths and one fail-open path, all
-# three claimed in references/harness.md and SETUP.md. Prove each: the installed
-# copy WINS over the repository copy, the repository copy is used when the
-# installed one is absent, and a planned reground still emits valid JSON with
-# neither present. Distinct canaries, or "it resolved something" reads as "it
-# resolved the right thing".
+# three claimed in references/agent-harness.md and SETUP.md. Under the diet the
+# hook emits a POINTER to whichever copy resolves — the installed path WINS
+# over the repository path, and with neither present the reground still emits
+# valid JSON with no complexity pointer at all.
 mkdir -p "$REPO/.agents/skills/cyclomatic-complexity"
 printf 'COMPLEXITY-INSTALLED-CANARY\n' >"$REPO/.agents/skills/cyclomatic-complexity/SKILL.md"
 (cd "$REPO" && printf '{"thread_id":"thread-cc1"}\n' | .codex/hooks/mark-post-compact.sh)
 (cd "$REPO" && printf '{"thread_id":"thread-cc1"}\n' | CBR_REGROUND_EVENT=SessionStart .codex/hooks/post-compact-reground.sh) >"$TMP/reground-cc-installed.json"
-contains "$TMP/reground-cc-installed.json" COMPLEXITY-INSTALLED-CANARY
-not_contains "$TMP/reground-cc-installed.json" COMPLEXITY-CANARY
+contains "$TMP/reground-cc-installed.json" '.agents/skills/cyclomatic-complexity/SKILL.md — the complexity ceiling'
+not_contains "$TMP/reground-cc-installed.json" COMPLEXITY-INSTALLED-CANARY
 rm -rf "$REPO/.agents/skills/cyclomatic-complexity"
 (cd "$REPO" && printf '{"thread_id":"thread-cc2"}\n' | .codex/hooks/mark-post-compact.sh)
 (cd "$REPO" && printf '{"thread_id":"thread-cc2"}\n' | CBR_REGROUND_EVENT=SessionStart .codex/hooks/post-compact-reground.sh) >"$TMP/reground-cc-source.json"
-contains "$TMP/reground-cc-source.json" COMPLEXITY-CANARY
+contains "$TMP/reground-cc-source.json" '- skills/cyclomatic-complexity/SKILL.md — the complexity ceiling'
 mv "$REPO/skills/cyclomatic-complexity" "$TMP/cc-skill-parked"
 (cd "$REPO" && printf '{"thread_id":"thread-cc3"}\n' | .codex/hooks/mark-post-compact.sh)
 (cd "$REPO" && printf '{"thread_id":"thread-cc3"}\n' | CBR_REGROUND_EVENT=SessionStart .codex/hooks/post-compact-reground.sh) >"$TMP/reground-cc-absent.json"
 python3 -m json.tool "$TMP/reground-cc-absent.json" >/dev/null
-not_contains "$TMP/reground-cc-absent.json" COMPLEXITY-CANARY
-contains "$TMP/reground-cc-absent.json" 'policy.md — the laws'
+not_contains "$TMP/reground-cc-absent.json" 'cyclomatic-complexity/SKILL.md'
+contains "$TMP/reground-cc-absent.json" 'policy.md — control-plane law'
 mv "$TMP/cc-skill-parked" "$REPO/skills/cyclomatic-complexity"
 
 # Mid-build ONLY. Decision 4 makes this half of the contract as binding as the
@@ -318,10 +340,10 @@ mv "$REPO/task_plan.md" "$TMP/plan-parked"
 (cd "$REPO" && printf '{"thread_id":"thread-cc4"}\n' | CBR_REGROUND_EVENT=SessionStart .codex/hooks/post-compact-reground.sh) >"$TMP/reground-no-plan.json"
 python3 -m json.tool "$TMP/reground-no-plan.json" >/dev/null
 contains "$TMP/reground-no-plan.json" CONSTITUTION.md-CANARY
-not_contains "$TMP/reground-no-plan.json" COMPLEXITY-CANARY
+not_contains "$TMP/reground-no-plan.json" 'cyclomatic-complexity/SKILL.md'
 not_contains "$TMP/reground-no-plan.json" FINDINGS-CANARY
 not_contains "$TMP/reground-no-plan.json" PROGRESS-CANARY
-not_contains "$TMP/reground-no-plan.json" 'policy.md — the laws'
+not_contains "$TMP/reground-no-plan.json" 'policy.md — control-plane law'
 mv "$TMP/plan-parked" "$REPO/task_plan.md"
 python3 - "$REPO/task_plan.md" <<'PY'
 import sys
@@ -359,27 +381,6 @@ cp "$TMP/plan.good" "$REPO/task_plan.md"
 git -C "$REPO" reset -q
 pass "plan coherence blocks missing plan update and wrong branch"
 
-# RoboRev deterministic state matrix.
-GATE="$REPO/.cbr-codex/scripts/roborev-clean-gate.sh"
-printf 'null\n' >"$STATE/open.json"; printf '[]\n' >"$STATE/all.json"; printf 'review PASS\n' >"$STATE/show.txt"
-must bash -c "cd '$REPO' && '$GATE'"
-printf '[{"id":1,"git_ref":"abcdef0123","status":"done","verdict":"F"}]\n' >"$STATE/open.json"
-must_fail bash -c "cd '$REPO' && '$GATE' >/dev/null 2>&1"
-printf '[{"id":2,"git_ref":"abcdef0123","status":"done","verdict":"P"}]\n' >"$STATE/open.json"
-must bash -c "cd '$REPO' && '$GATE'"
-contains "$STATE/actions.log" 'close 2'
-printf '[]\n' >"$STATE/open.json"; printf '[]\n' >"$STATE/all.json"; printf 'Error: no review found\n' >"$STATE/show.txt"
-must_fail bash -c "cd '$REPO' && '$GATE' >/dev/null 2>&1"
-contains "$STATE/actions.log" 'review '
-printf '[{"id":3,"git_ref":"abcdef0123","status":"failed"}]\n' >"$STATE/open.json"
-must_fail bash -c "cd '$REPO' && '$GATE' >/dev/null 2>&1"
-printf '[{"id":3,"git_ref":"abcdef0123","status":"failed"}]\n' >"$STATE/open.json"
-printf '[{"id":4,"git_ref":"abcdef0123","status":"done","verdict":"P"}]\n' >"$STATE/all.json"; printf 'review PASS\n' >"$STATE/show.txt"
-must bash -c "cd '$REPO' && '$GATE'"
-printf '[]\n' >"$STATE/open.json"; printf '[{"id":5,"git_ref":"abcdef0123","status":"queued"}]\n' >"$STATE/all.json"
-must_fail bash -c "cd '$REPO' && '$GATE' >/dev/null 2>&1"
-printf '[]\n' >"$STATE/open.json"; printf '[]\n' >"$STATE/all.json"; printf 'review PASS\n' >"$STATE/show.txt"
-pass "RoboRev null, FAIL, PASS-close, no-row, crash, retry, and queued states"
 
 # Post-commit feedback and SessionStart sweep are advisory surfaces.
 gate_state="$(git -C "$REPO" rev-parse --git-dir)/roborev-codex-gate-last-sha"
@@ -463,10 +464,14 @@ d=json.load(open(sys.argv[1])); d['streams'].insert(0, {'slug':'dep','branch':'s
 PY
 must_fail "$SKILL/scripts/cbr_graph.py" dispatchable "$TMP/dispatch-late.json" life --repo "$REPO" --worktree "$WT"
 pass "dispatchable requires worktree provision after dependency merge"
-must bash -c "cd '$REPO' && '$CBR' launch life --prompt-file '$SKILL/templates/dispatch-prompt.md'"
+# Launch refuses a prompt still carrying the marker placeholder, so compose the
+# concrete prompt the way an operator must: exact filename substituted in.
+sed 's/DONE-<branch>\.marker/DONE-stream-life.marker/' "$SKILL/templates/dispatch-prompt.md" >"$TMP/dispatch-prompt.md"
+must_fail bash -c "cd '$REPO' && '$CBR' launch life --prompt-file '$SKILL/templates/dispatch-prompt.md' >/dev/null 2>&1"
+must bash -c "cd '$REPO' && '$CBR' launch life --prompt-file '$TMP/dispatch-prompt.md'"
 RUN="$REPO/.cbr-codex/runs/life"
 contains "$RUN/thread-id" '11111111-2222-4333-8444-555555555555'
-must_fail bash -c "cd '$REPO' && '$CBR' launch life --prompt-file '$SKILL/templates/dispatch-prompt.md' >/dev/null 2>&1"
+must_fail bash -c "cd '$REPO' && '$CBR' launch life --prompt-file '$TMP/dispatch-prompt.md' >/dev/null 2>&1"
 pid="$(cat "$RUN/pid")"; kill "$pid"; wait "$pid" 2>/dev/null || true
 sleep 2
 must_fail bash -c "cd '$REPO' && '$CBR' status life >/dev/null"

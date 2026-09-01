@@ -1,8 +1,9 @@
 # Codex leaf acceptance rows
 
-The complete acceptance contract is the shared checklist under
-`references/cbr-core/acceptance/` plus these provider-mechanical rows. IDs here
-MUST exactly equal the rows marked `leaf-row` in the shared checklist.
+These are the Codex provider-mechanical acceptance rows. (The neutral
+checklist they used to pair with was archived to the source repo's
+docs/archive/cbr-acceptance/ on 2026-08-31; the conformance/smoke/mutation
+suite is the executable acceptance source.)
 
 - **A3** — the worktree-safe pre-push hook denies a `stream/*` push unless
   `CBR_ALLOW_PUSH=1`; worktree-local permission state is ignored by Git.
@@ -19,7 +20,7 @@ MUST exactly equal the rows marked `leaf-row` in the shared checklist.
   `model_auto_compact_token_limit = 297500` only to a model whose context can
   support it; the effective threshold clamps for smaller models.
 - **F4a** — builders launch as persisted, non-ephemeral
-  `codex exec --json -C <worktree>` roots recorded by the harness.
+  `codex exec --json -C <worktree>` roots recorded by the control plane.
 - **F4b** — builders launch with `--sandbox workspace-write`,
   `approval_policy="never"`, verified hook trust, and an outside-owned PID/thread
   registry; unrestricted, skipped-hook, untrusted, or dispatcher-child variants
@@ -31,6 +32,6 @@ MUST exactly equal the rows marked `leaf-row` in the shared checklist.
   `.cbr-codex/runs/<slug>/` PID, thread, JSONL, cwd, commit age, and review facts;
   a global Codex process or stale heartbeat cannot satisfy it.
 - **G4** — launch creates `.cbr-codex/watch/<slug>.needs-arm`; arming `watch`
-  clears it, and the independent watchdog detects a stale watcher heartbeat.
+  clears it.
 - **K4** — temporary files are trap-cleaned and persistent run/watch bookkeeping
   stays under `.cbr-codex/runs/` and `.cbr-codex/watch/`.

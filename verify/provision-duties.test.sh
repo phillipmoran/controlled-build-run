@@ -9,7 +9,12 @@
 #   2. record + assert the base pin — the strand's declared base is written
 #      down at birth so launch can mechanically prove the branch still grows
 #      from it, instead of discovering a silent wrong-base fork mid-build.
-#   3. the project prep hook — stack-specific workspace prep (dependency
+#   3. seed the observer's record — deleting the dead strand's STATUS.md is
+#      only half the duty: a worktree with no STATUS.md tells a watcher just as
+#      little as one wearing the wrong sign, and the skeleton is where the
+#      single-source rule reaches a builder (the record that owns the status
+#      fields, and links for everything else).
+#   4. the project prep hook — stack-specific workspace prep (dependency
 #      links, venvs) lives in the PROJECT's own `.cbr/provision-hook.sh`,
 #      not in the neutral core; the core only owns the socket: run it when
 #      present, skip when absent, fail the provision loudly when it fails.
@@ -54,6 +59,7 @@ git -C "$repo" init -q -b main
 g="git -C $repo -c user.email=t@t -c user.name=t"
 printf '# STATUS — stream: dead-strand\nphase: COMPLETE\n' > "$repo/STATUS.md"
 printf 'stream/dead-strand — COMPLETE\n' > "$repo/DONE.marker"
+printf 'stream/dead-strand — COMPLETE\n' > "$repo/DONE-stream-dead-strand.marker"
 printf 'question from a dead build\n' > "$repo/ASK-ORCH.md"
 printf '# limits — dead strand\n' > "$repo/KNOWN-LIMITATIONS.md"
 printf 'real source\n' > "$repo/app.txt"
@@ -67,11 +73,11 @@ git -C "$repo" worktree add -q "$wt" -b stream/fresh main
 # ---------------------------------------------------------------------------
 out="$(cbr_provision_reset_stale_records "$wt")" \
   || fail "reset-stale-records failed on a normal worktree: $out"
-for f in STATUS.md DONE.marker ASK-ORCH.md KNOWN-LIMITATIONS.md; do
+for f in STATUS.md DONE.marker DONE-stream-dead-strand.marker ASK-ORCH.md KNOWN-LIMITATIONS.md; do
   [ -e "$wt/$f" ] && fail "stale $f inherited from the base must be gone after reset"
 done
 [ -f "$wt/app.txt" ] || fail "reset must touch ONLY record files — app.txt was removed"
-grep -q 'removed=4' <<<"$out" || fail "reset must report what it removed, got: $out"
+grep -q 'removed=5' <<<"$out" || fail "reset must report what it removed, got: $out"
 
 # Idempotent: a second run finds nothing and still succeeds.
 out="$(cbr_provision_reset_stale_records "$wt")" \
@@ -185,7 +191,16 @@ seed_leaf_repo() { # dir  — a base branch with stale records and a passing hoo
 assert_provision_effects() { # leafname repo worktree branch
   local name="$1" r="$2" w="$3" b="$4" pin
   [ -d "$w" ] || fail "$name provision did not create the worktree $w"
-  [ -e "$w/STATUS.md" ] && fail "$name provision left the base's stale STATUS.md in the worktree"
+  # The stale sign is gone AND the strand's own is up: "no STATUS.md" would
+  # pass a deletion-only check while leaving the watcher exactly as blind.
+  [ -f "$w/STATUS.md" ] \
+    || fail "$name provision left the newborn strand with no STATUS.md — a watcher cannot tell it from a strand that never started"
+  grep -q "stream/dead" "$w/STATUS.md" \
+    && fail "$name provision carried the base's dead strand into the new STATUS.md"
+  grep -q "^branch=$b\$" "$w/STATUS.md" \
+    || fail "$name provision's STATUS.md does not name this strand's branch ($b)"
+  grep -q "^state=" "$w/STATUS.md" \
+    || fail "$name provision's STATUS.md carries no state field — it is not the observer's record"
   [ -e "$w/DONE.marker" ] && fail "$name provision left the base's stale DONE.marker in the worktree"
   [ -f "$w/hook-ran.txt" ] || fail "$name provision did not run .cbr/provision-hook.sh in the worktree"
   pin="$(git -C "$r" config --get "branch.$b.cbrBase" 2>/dev/null)" || pin=""
@@ -193,13 +208,25 @@ assert_provision_effects() { # leafname repo worktree branch
     || fail "$name provision recorded pin '$pin', expected the base (main) sha"
 }
 
-printf 'dispatch prompt\n' > "$tmp/prompt.txt"
+# A skeleton the leaf cannot find is a MISCONFIGURATION, not a shrug: provision
+# would otherwise report success over a strand that has no observer record at
+# all — the exact blindness this duty exists to end.
+cbr_seed_status_record "$tmp/no-such-skeleton.md" "$tmp/nowhere" stream/x ASKS.md >/dev/null 2>&1 \
+  && fail "a missing status skeleton was reported as a completed seed"
+
+# The launch marker gate runs before the base-pin check under test, so the
+# prompt must name each fixture branch's exact marker to reach it.
+printf 'dispatch prompt\nCOMMIT DONE-stream-s1.marker\nCOMMIT DONE-stream-c1.marker\n' > "$tmp/prompt.txt"
 
 # ---- Claude leaf ----------------------------------------------------------
 lr="$tmp/leafrepo"
 seed_leaf_repo "$lr"
 mkdir -p "$lr/skills/claude-controlled-build-run/scripts" \
+         "$lr/skills/claude-controlled-build-run/templates" \
          "$lr/skills/claude-controlled-build-run/references/core/scripts"
+cp "$(dirname "$claude_leaf")/../templates/status.skeleton.md" \
+   "$lr/skills/claude-controlled-build-run/templates/" \
+  || fail "claude status.skeleton.md template not found next to the leaf"
 cp "$claude_leaf" "$lr/skills/claude-controlled-build-run/scripts/cbr.sh"
 cp "$lib" "$lr/skills/claude-controlled-build-run/references/core/scripts/strand-lib.sh"
 out_c="$( cd "$lr" && bash skills/claude-controlled-build-run/scripts/cbr.sh provision s1 stream/s1 --base main 2>&1 )" || true
@@ -212,6 +239,21 @@ out_c="$( cd "$lr" && bash skills/claude-controlled-build-run/scripts/cbr.sh lau
 [ "$rc" -ne 0 ] || fail "cbr.sh launch accepted a branch that does not contain its recorded base"
 grep -q 'recorded base' <<<"$out_c" \
   || fail "cbr.sh launch must refuse FOR THE PIN REASON, got: $out_c"
+
+# ...and with the skeleton gone, the leaf says so instead of finishing quietly
+mv "$lr/skills/claude-controlled-build-run/templates/status.skeleton.md" "$tmp/claude-skel.bak"
+rc=0
+out_c="$( cd "$lr" && bash skills/claude-controlled-build-run/scripts/cbr.sh provision s9 stream/s9 --base main 2>&1 )" || rc=$?
+[ -f "$tmp/cockpit-s9/STATUS.md" ] \
+  && fail "cbr.sh provision produced a STATUS.md with no skeleton to build it from"
+# The rc and the WORD, not the mere mention of the filename: the ordinary seed
+# line names STATUS.md too, so a grep for the name alone passes just as happily
+# on a provision that never tried to seed one.
+[ "$rc" -ne 0 ] \
+  || fail "cbr.sh provision exited 0 having seeded no observer record — the dispatcher is told a half-provisioned strand is ready, got: $out_c"
+grep -q 'seed failed' <<<"$out_c" \
+  || fail "cbr.sh provision left a strand with no observer record and never named the failure, got: $out_c"
+mv "$tmp/claude-skel.bak" "$lr/skills/claude-controlled-build-run/templates/status.skeleton.md"
 
 # failing hook fails the provision run
 printf '#!/bin/sh\nexit 3\n' > "$lr/.cbr/provision-hook.sh"
@@ -227,12 +269,25 @@ codex_dir="$cr/skills/codex-controlled-build-run"
 mkdir -p "$codex_dir/scripts" "$codex_dir/references/cbr-core/scripts" "$codex_dir/templates"
 cp "$codex_leaf" "$codex_dir/scripts/cbr-codex.sh"
 cp "$lib" "$codex_dir/references/cbr-core/scripts/strand-lib.sh"
-cp "$(dirname "$codex_leaf")/../templates/task_plan.skeleton.md" "$codex_dir/templates/" \
-  || fail "codex task_plan.skeleton.md template not found next to the leaf"
+for t in task_plan.skeleton.md status.skeleton.md; do
+  cp "$(dirname "$codex_leaf")/../templates/$t" "$codex_dir/templates/" \
+    || fail "codex $t template not found next to the leaf"
+done
 printf '{"worktreeParent":"..","worktreePrefix":"codex-wt-","setupCommands":[],"toolchainProbe":"true"}\n' \
   > "$cr/.cbr-codex.json"
 out_x="$( cd "$cr" && bash skills/codex-controlled-build-run/scripts/cbr-codex.sh provision c1 stream/c1 --base main 2>&1 )" || true
 assert_provision_effects "cbr-codex.sh" "$cr" "$tmp/codex-wt-c1" stream/c1
+
+mv "$codex_dir/templates/status.skeleton.md" "$tmp/codex-skel.bak"
+rc=0
+out_x="$( cd "$cr" && bash skills/codex-controlled-build-run/scripts/cbr-codex.sh provision c9 stream/c9 --base main 2>&1 )" || rc=$?
+[ -f "$tmp/codex-wt-c9/STATUS.md" ] \
+  && fail "cbr-codex.sh provision produced a STATUS.md with no skeleton to build it from"
+[ "$rc" -ne 0 ] \
+  || fail "cbr-codex.sh provision exited 0 having seeded no observer record, got: $out_x"
+grep -q 'seed failed' <<<"$out_x" \
+  || fail "cbr-codex.sh provision left a strand with no observer record and never named the failure, got: $out_x"
+mv "$tmp/codex-skel.bak" "$codex_dir/templates/status.skeleton.md"
 
 # launch reject on a broken pin (provision.json is forced to PASS so the pin
 # check — which comes right after it — is what actually refuses)
@@ -252,4 +307,4 @@ out_x="$( cd "$cr" && bash skills/codex-controlled-build-run/scripts/cbr-codex.s
 grep -q 'provision hook' <<<"$out_x" \
   || fail "cbr-codex.sh provision must report the hook failure, got: $out_x"
 
-echo "provision-duties.test PASS (stale records reset, base pin recorded+asserted, prep-hook socket, both leaves run end-to-end incl. launch pin-reject)"
+echo "provision-duties.test PASS (stale records reset, observer's record seeded, base pin recorded+asserted, prep-hook socket, both leaves run end-to-end incl. launch pin-reject)"

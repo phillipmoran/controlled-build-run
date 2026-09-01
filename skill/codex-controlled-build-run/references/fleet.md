@@ -6,16 +6,15 @@ Use only when one user request fans into several dependency-ordered workstreams.
 
 - **Builder/workstream:** one production slice, one stream branch, one worktree, one independent Codex root, one stream plan.
 - **Orchestrator:** one integration-branch strand, fleet plan, dispatch/monitor/merge/human seam. It writes no production code.
-- **Captain:** optional tier above several orchestrators. Reads status/marker/commit facts and relays human decisions; it does not build or merge.
 
-The orchestrator and every builder must be rooted in the repository they operate. Compaction reinjects docs from that root; a captain parked in another repository is not a substitute.
+The orchestrator and every builder must be rooted in the repository they operate. Compaction reinjects docs from that root; a dispatcher parked in another repository is not a substitute.
 
 ## Fleet plan
 
 The orchestrator's `task_plan.md` is the source of truth:
 
 | Stream | Goal | Branch | Worktree | Depends on merged | Files owned | Status | Findings logged |
-|---|---|---|---|---|---|---|---|
+| ------ | ---- | ------ | -------- | ----------------- | ----------- | ------ | --------------- |
 
 Add two kinds of edges:
 
@@ -84,20 +83,19 @@ The launch prompt must state:
 1. Use `$codex-controlled-build-run` from this worktree's `task_plan.md`.
 2. Binding contracts are authoritative.
 3. Read and write only inside the worktree.
-4. Start with the harness probe.
+4. Start with the control-plane probe.
 5. Use watched-fail TDD and commit small.
 6. Respond to and close every RoboRev review.
 7. Update plan checkbox/checkpoint stamps with the work.
 8. Never request interactive input; write `ASK-ORCH.md` and continue on the declared default.
-9. Commit `DONE.marker` in the final commit only after all gates pass.
+9. Commit the branch's `DONE-<branch>.marker` in the final commit only after all gates pass.
 
 ## Monitoring
 
-Immediately after launch, arm both fire-once watcher and watchdog as tracked background tasks:
+Immediately after launch, arm the fire-once watcher as a tracked background task:
 
 ```bash
 cbr-codex.sh watch <slug> &
-cbr-codex.sh watch <slug> --watchdog &
 ```
 
 Valid evidence:
@@ -106,13 +104,13 @@ Valid evidence:
 - `events.jsonl` movement and terminal `turn.completed`/`turn.failed`;
 - worktree-rooted branch and commit age;
 - dirty-file count;
-- hash changes in `DONE.marker` and `NEEDS-HUMAN.md`;
+- hash changes in the branch's `DONE-<branch>.marker` and `NEEDS-HUMAN.md`;
 - open RoboRev state;
 - committed status/plan progress.
 
 Never trust pid alone: a stuck process is alive. Never trust heartbeat alone: it proves only the watcher. Weigh process with commit and JSONL age. Silence past the configured stall interval is an alarm.
 
-The watcher fires once on DONE change, human-blocker change, aged open FAIL, process exit without DONE, or total inactivity. Re-arm it first after every wake. The watchdog fires when the watcher's heartbeat is stale for 15 minutes. A coarse outer wake may backstop all-watchers-dead scenarios; it does not replace the 15-minute stall alarm.
+The watcher fires once on DONE change, human-blocker change, aged open FAIL, process exit without DONE, or total inactivity. Re-arm it first after every wake. A coarse outer wake may backstop all-watchers-dead scenarios; it does not replace the 15-minute stall alarm.
 
 Questions route by file:
 

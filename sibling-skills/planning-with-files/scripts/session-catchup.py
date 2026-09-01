@@ -48,12 +48,12 @@ def normalize_path(project_path: str) -> str:
 
     Claude Code stores session directories using the Windows-native path
     (e.g., C:\\Users\\...) sanitized with separators replaced by dashes.
-    Git Bash passes /c/Users/... which produces a DIFFERENT sanitized
+    Git Bash passes a POSIX-style /c/... path which produces a DIFFERENT sanitized
     string. This function converts Git Bash paths to Windows paths first.
     """
     p = project_path
 
-    # Git Bash / MSYS2: /c/Users/... -> C:/Users/...
+    # Git Bash / MSYS2: /c/... -> C:/...
     if len(p) >= 3 and p[0] == '/' and p[2] == '/':
         p = p[1].upper() + ':' + p[2:]
 

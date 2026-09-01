@@ -16,11 +16,8 @@
 # There is deliberately NO "do everything" subcommand. You run the one for the moment you're at:
 #   provision (before dispatch) -> launch (dispatch the builder as `claude --bg`) -> status (watch from outside).
 #
-# Usage:
-#   cbr.sh provision <slug> <branch> [--base <ref>]
-#   cbr.sh launch    <slug> --prompt-file <file> [--model <id>] [--effort <low|medium|high|xhigh|max>]
-#   cbr.sh status    <slug>
-#   cbr.sh help
+# Usage: `cbr.sh help` is the one help text (deduped 2026-08-31); this header
+# does not repeat it.
 #
 # The model/effort defaults below MUST match SKILL.md "The model dial". They live here only so an
 # unattended launch has a value; always pass --model/--effort explicitly when you can, and the
@@ -28,7 +25,7 @@
 
 set -uo pipefail
 
-# ---- constants (keep in sync with SKILL.md "model dial" + references/harness-spec.md §7) ----
+# ---- constants (keep in sync with SKILL.md "model dial" + references/agent-harness-spec.md §7) ----
 DEFAULT_MODEL="claude-sonnet-5"
 DEFAULT_EFFORT="medium"
 WEB_PKG="."   # the npm package whose node_modules the gate needs (repo root for now)
@@ -46,6 +43,7 @@ WEB_PKG="."   # the npm package whose node_modules the gate needs (repo root for
 # bites — it is a PreToolUse hook, independent of bgIsolation (proven on a --bg session 2026-06-23).
 ALLOWLIST_JSON='{
   "worktree": { "bgIsolation": "none" },
+  "crossSessionInbound": "accept",
   "permissions": {
     "allow": [
       "Edit", "Write", "MultiEdit",
@@ -73,12 +71,14 @@ note() { printf '  ----  %s\n' "$*"; }
 # check failed. Printing a warn-only fact in red FAIL made a clean doctor look broken.
 warn() { printf '  \033[33mWARN\033[0m  %s\n' "$*"; }
 
-# The shared, provider-neutral closeout mechanics. The core snapshot ships inside
-# this leaf (references/core/, byte-gated by verify/core-mirrors.test.sh), so the path is
-# fixed relative to this script and needs no repo lookup. Sourced, not shelled out
-# to: these are functions the closeout composes.
+# The shared, provider-neutral closeout mechanics. An installed kit leaf ships
+# the core snapshot inside itself (references/core/, materialized at kit
+# export); in the canonical repo the leaf reads skills/cbr-core directly and
+# carries no checked-in copy. Sourced, not shelled out to: these are functions
+# the closeout composes.
 CBR_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CBR_STRAND_LIB="$CBR_SELF_DIR/../references/core/scripts/strand-lib.sh"
+[ -f "$CBR_STRAND_LIB" ] || CBR_STRAND_LIB="$CBR_SELF_DIR/../../cbr-core/scripts/strand-lib.sh"
 if [ -f "$CBR_STRAND_LIB" ]; then
   # shellcheck source=/dev/null
   . "$CBR_STRAND_LIB"
@@ -86,15 +86,14 @@ fi
 
 repo_root() { git rev-parse --show-toplevel 2>/dev/null || die "not inside a git repo"; }
 
-# Occupancy as a tri-state, in one place, because every caller that asks it gets
-# the same three answers and the same right to be wrong in only one direction.
-# Echoes yes|no|unknown; never fails.
+# Tri-state occupancy lives in strand-lib (cbr_worktree_occupancy); this thin
+# wrapper only degrades to "unknown" when the library could not be sourced.
 worktree_occupancy() {
-  local path="$1" rc=2
-  if command -v cbr_path_has_live_process >/dev/null; then
-    if cbr_path_has_live_process "$path"; then rc=0; else rc=$?; fi
+  if command -v cbr_worktree_occupancy >/dev/null; then
+    cbr_worktree_occupancy "$1"
+  else
+    echo unknown
   fi
-  case "$rc" in 0) echo yes ;; 1) echo no ;; *) echo unknown ;; esac
 }
 
 
@@ -120,7 +119,7 @@ primary_worktree_project_id() {
 # Sets the global array CBR_BIN_CMD to an invocation prefix for the recorder CLI and returns
 # 0, or returns 1 if none is resolvable. Checked in order: an explicit CBR_BIN override, a
 # globally-linked `cbr` on PATH, then the in-repo adapter build — the self-hosting case where
-# the reference host's own cbr.sh dispatches the reference host builders. A target repo armed with this skill
+# The upstream repo's own cbr.sh dispatches its own builders. A target repo armed with this skill
 # but without the recorder installed simply gets no lineage events, per zero-touch.
 resolve_cbr_bin() {
   if [ -n "${CBR_BIN:-}" ]; then CBR_BIN_CMD=("$CBR_BIN"); return 0; fi
@@ -407,11 +406,11 @@ ensure_push_firewall() {  # $1 = pre-push hook file path
   return 2
 }
 
-# is the FULL hook wiring live in this settings.json? The armed harness needs all four blocks —
+# is the FULL hook wiring live in this settings.json? The armed control plane needs all four blocks —
 # Probity (PreToolUse), the RoboRev gate (PostToolUse), and the session sweep + compaction
 # re-ground (SessionStart). Hook SCRIPTS on disk prove nothing if settings never invokes them,
 # and a needle in an inert entry proves nothing either — so this parses the hook OBJECTS: the
-# command must sit in a type:"command" entry under the right event, with the matcher the harness
+# command must sit in a type:"command" entry under the right event, with the matcher the control plane
 # needs (Probity must match Write+Edit, the RoboRev gate must match Bash, the re-ground must
 # match "compact"; the sweep block carries no matcher). Also verifies the model pin the dial says
 # lives here. Prints missing piece names (one per line); exit 0 all wired / 1 missing / 2 unreadable.
@@ -503,6 +502,7 @@ need = [
     ("SessionStart","script",  ".claude/hooks/roborev-session-sweep.sh","NONE",            "RoboRev session sweep (SessionStart, must run on EVERY start — no scoping matcher)"),
     ("SessionStart","script",  ".claude/hooks/post-compact-reground.sh",["compact"],       "compaction re-ground (SessionStart, matcher 'compact')"),
     ("PreToolUse",  "script",  ".claude/hooks/no-interactive-ask.sh",   ["AskUserQuestion"], "AskUserQuestion guard (PreToolUse, matcher 'AskUserQuestion' — a --bg builder must not freeze on an interactive prompt)"),
+    ("Stop",        "script",  ".claude/hooks/builder-stop-check.sh",   "NONE",            "stop-before-DONE gate (Stop, unscoped — a stream builder may not go quiet with the plan open and no terminal marker)"),
 ]
 missing = [label for event, kind, needle, matcher, label in need if not live(event, kind, needle, matcher)]
 if not isinstance(cfg.get("model"), str) or not cfg["model"].strip():
@@ -575,6 +575,17 @@ cmd_provision() {
     fi
   else
     bad "shared strand library missing (cbr_provision_reset_stale_records)"; fails=$((fails+1))
+  fi
+
+  # 1d. the observer's record — seeded from the leaf's skeleton, which is where
+  # the single-source rule reaches a builder: this file owns the status fields
+  # and links for everything else. Shared-core substitution, same on both leaves.
+  if command -v cbr_seed_status_record >/dev/null; then
+    seed_out="$(cbr_seed_status_record "$SKILL_DIR/templates/status.skeleton.md" "$wt" "$branch" "ASK-ORCH.md")" \
+      && ok "STATUS.md ${seed_out##*seeded=}" \
+      || { bad "STATUS.md seed failed"; fails=$((fails+1)); }
+  else
+    bad "shared strand library missing (cbr_seed_status_record)"; fails=$((fails+1))
   fi
 
   # 1d. base pin — write the strand's base down at birth so launch can prove the
@@ -671,19 +682,29 @@ PYEOF
     bad "toolchain unreachable in worktree (node_modules link failed?)"; fails=$((fails+1))
   fi
 
-  # 4. operability allowlist (§7) + bgIsolation:none — gitignored, worktree-scoped; does NOT weaken Probity
+  # 4. operability allowlist (§7) + bgIsolation:none + crossSessionInbound — gitignored,
+  #    worktree-scoped; does NOT weaken Probity.
+  #
+  #    crossSessionInbound lives HERE, at birth, and not at launch: a builder runs with
+  #    bypassed permissions, which is exactly the condition that makes inbound messages
+  #    HELD for an approval no one is present to give (observed 2026-08-28 — the send
+  #    reports success, nothing arrives, and the orchestrator reads the silence as a
+  #    builder with nothing to say). A setting written after dispatch reaches a session
+  #    that has already read its settings, so the newborn must be BORN accepting.
   mkdir -p "$wt/.claude"
   printf '%s\n' "$ALLOWLIST_JSON" > "$wt/.claude/settings.local.json"
   if git -C "$wt" check-ignore -q .claude/settings.local.json; then
-    ok "allowlist + bgIsolation:none written and confirmed gitignored"
+    ok "allowlist + bgIsolation:none + crossSessionInbound:accept written and confirmed gitignored"
   else
     bad "allowlist is NOT gitignored — it would get committed"; fails=$((fails+1))
   fi
+  if grep -q '"crossSessionInbound": *"accept"' "$wt/.claude/settings.local.json"; then
+    ok "newborn accepts cross-session inbound (the orchestrator can reach it)"
+  else
+    bad "newborn does not accept cross-session inbound — every message to it would be HELD"; fails=$((fails+1))
+  fi
 
   # 5. armed-checks — gates only bite on a branch that CONTAINS them, and the hook must be installed
-  grep -q "roborev-clean" "$wt/.pre-commit-config.yaml" 2>/dev/null \
-    && ok "roborev-clean gate present in this branch's .pre-commit-config.yaml" \
-    || { bad "roborev-clean gate missing from .pre-commit-config.yaml (branch forked before the gate?)"; fails=$((fails+1)); }
   local hook
   hook="$(git -C "$wt" rev-parse --git-path hooks/pre-commit 2>/dev/null)"   # ABSOLUTE path for a linked worktree
   if [ -n "$hook" ] && [ -x "$hook" ]; then
@@ -712,7 +733,7 @@ PYEOF
 
   echo
   if [ "$fails" -eq 0 ]; then
-    note "harness provisioned. NEXT: drop task_plan.md (with a '**Branch:** $branch' line) into $wt,"
+    note "control plane provisioned. NEXT: drop task_plan.md (with a '**Branch:** $branch' line) into $wt,"
     note "then: cbr.sh launch $slug --prompt-file <dispatch-prompt-file>"
     note "the LIVE Probity prove-NO/prove-YES probe is the builder's FIRST in-session act — this script"
     note "verifies the path is ready, it does NOT prove Probity bites (a shell can't)."
@@ -748,6 +769,20 @@ cmd_launch() {
 
   local wt wt_real; wt="$(worktree_path "$slug")"
   [ -d "$wt" ] || die "launch: worktree '$wt' does not exist — run 'cbr.sh provision $slug <branch>' first"
+
+  # MARKER CONTRACT — enforced BEFORE dispatch. After `claude --bg` the prompt
+  # cannot be corrected, and a builder told anything but the EXACT per-branch
+  # filename commits a marker its watcher never latches (a guessed
+  # sanitization is the same deafness). The exact name, not the pattern.
+  # Fails CLOSED: a launch that cannot derive the name cannot enforce the
+  # contract, and an unenforced dispatch is the harm this gate exists to stop.
+  local launch_branch launch_marker
+  launch_branch="$(git -C "$wt" branch --show-current 2>/dev/null || true)"
+  command -v cbr_done_marker_name >/dev/null \
+    || die "launch: shared strand library unavailable (cbr_done_marker_name missing) — cannot derive this strand's done marker, so the prompt contract cannot be enforced; refusing to dispatch"
+  launch_marker="$(cbr_done_marker_name "$launch_branch")"
+  grep -qF "$launch_marker" "$prompt_file" \
+    || die "launch: the dispatch prompt never names this strand's exact done marker '$launch_marker' — the builder would complete into a file the watcher never reads; tell it to COMMIT $launch_marker as its final commit, then relaunch"
 
   # BASE PIN — prove the branch still grows from the base provision recorded
   # (shared-core duty). rc=1 is the wrong-base fork, caught before dispatch
@@ -814,12 +849,12 @@ PY
   fi
 
   # The registry only knows the sessions IT launched. A worktree being driven
-  # INTERACTIVELY, or by another harness, is invisible to it — and dispatching a
+  # INTERACTIVELY, or by another agent harness, is invisible to it — and dispatching a
   # second writer there is one of the two harms the occupancy fact exists to
   # prevent. Same one-writer rule, wider evidence.
   local locc; locc="$(worktree_occupancy "$wt_real")"
   case "$locc" in
-    yes) die "launch: a live process is already rooted in $wt (interactive session, or another harness) — refusing to dispatch a second writer into an occupied worktree" ;;
+    yes) die "launch: a live process is already rooted in $wt (interactive session, or another agent harness) — refusing to dispatch a second writer into an occupied worktree" ;;
     no)  ;;
     *)   # A one-writer rule that evaporates when a tool is missing is not a
          # rule. Refuse, and make the override an explicit human act rather
@@ -858,6 +893,16 @@ PY
   [ -n "$sid" ] || { printf '%s\n' "$out" | head -5; die "launch: could not parse a session id from 'claude --bg' output"; }
   echo "  dispatched: sessionId=$sid"
 
+  # The sentinels go up HERE, the instant a session id exists — not after the
+  # registration poll below. A builder that dispatched but never registered is
+  # real and running; if the demands were raised only on the success path, that
+  # builder would leave no trace, and the next launch would sail through the
+  # pending check and grow the fleet by one more unproven channel. The demand
+  # is created by the dispatch, not by the confirmation of it.
+  local root; root="$(cd "$(dirname "$0")/../../.." && pwd -P)"
+  mkdir -p "$root/.cbr-watch" 2>/dev/null && : > "$root/.cbr-watch/$slug.needs-arm"
+  rm -f "$root/.cbr-watch/$slug.heartbeat"   # a prior watcher's heartbeat must not read as "watched" for this fresh launch
+
   # PROOF it is really supervisor-managed (the survival property tmux used to give): it must appear in
   # the supervisor registry as a BACKGROUND session rooted in this worktree. Match by sessionId, with a
   # cwd fallback. Poll briefly — registration lags the dispatch by a beat. Silence here is an alarm.
@@ -894,33 +939,32 @@ PY
   # ARM-OWNERSHIP (the cure for launch-and-forget). Dispatch and watch must not separate. cbr.sh
   # cannot arm the watcher ITSELF: a watcher backgrounded inside this child process detaches from the
   # orchestrator's session, so its fire-once exit would never wake the orchestrator (only a task the
-  # orchestrator's OWN harness backgrounds delivers that wake). So launch does the next-best,
+  # orchestrator's own agent harness backgrounds delivers that wake). So launch does the next-best,
   # unmissable thing — drop a needs-arm sentinel that `cbr.sh status` turns into a loud UNWATCHED
   # alarm until it is cleared, and print the exact arm command as the REQUIRED final action.
-  local root; root="$(cd "$(dirname "$0")/../../.." && pwd -P)"
-  mkdir -p "$root/.cbr-watch" 2>/dev/null && : > "$root/.cbr-watch/$slug.needs-arm"
-  rm -f "$root/.cbr-watch/$slug.heartbeat"   # a prior watcher's heartbeat must not read as "watched" for this fresh launch
+  # (both sentinels were raised at dispatch, above — see the note there)
   echo
-  echo "  REQUIRED NEXT — background BOTH as tracked tasks (their exit is your wake; do NOT foreground):"
-  echo "      cbr.sh watch $slug                                # its armed line prints cycle=<id>"
-  echo "      cbr.sh watch $slug --watchdog --cycle <id>        # bind the dead-man to that exact cycle"
+  echo "  REQUIRED NEXT — background as a tracked task (its exit is your wake; do NOT foreground):"
+  echo "      cbr.sh watch $slug"
   echo "  Until then, 'cbr.sh status $slug' reports UNWATCHED.  (logs: claude logs $sid | stop: claude stop $sid)"
-  echo "  CONTRACT CHECK: the dispatch prompt must tell the builder to COMMIT DONE.marker as its final"
-  echo "  commit (a file-drop alone leaves 'stopped' ambiguous between COMPLETE and DIED)."
+  # The gate above already proved the prompt names the exact marker; this is
+  # the reminder of what the builder was told, not the check.
+  echo "  CONTRACT: dispatch prompt names $launch_marker (verified before dispatch); the builder must COMMIT"
+  echo "  it as its final commit (a file-drop alone leaves 'stopped' ambiguous between COMPLETE and DIED)."
 }
 
 # ---------------------------------------------------------------------------
-# watch <slug> [--watchdog [--cycle <id>]] [--stall-secs N] [--fail-grace-secs N]
-#   Arm the captain's fire-once event trap over a dispatched builder — the step `launch` prints as
+# watch <slug> [--stall-secs N] [--fail-grace-secs N]
+#   Arm the dispatcher's fire-once event trap over a dispatched builder — the step `launch` prints as
 #   REQUIRED. A thin, discoverable front for scripts/captain-watch.sh: it resolves the script path (so
 #   a context-less orchestrator need not know where it lives) and clears the launch needs-arm sentinel,
-#   then execs the watcher. ALWAYS background this as a tracked task so its exit is the wake; run it
-#   twice — the bare watcher FIRST, then --watchdog --cycle <id> with the cycle id the watcher's
-#   armed line prints (binding the dead-man is what lets it retire cleanly after DONE). DECIDES NOTHING.
+#   then execs the watcher. ALWAYS background this as a tracked task so its exit is the wake.
+#   (The separate --watchdog dead-man retired with the 2026-08-31 control-plane diet: the silence
+#   tripwire supersedes it.) DECIDES NOTHING.
 # ---------------------------------------------------------------------------
 cmd_watch() {
   local slug="${1:-}"; shift || true
-  [ -n "$slug" ] || die "usage: cbr.sh watch <slug> [--watchdog [--cycle <id>]] [...]  (ALWAYS background as a tracked task — its exit is your wake)"
+  [ -n "$slug" ] || die "usage: cbr.sh watch <slug> [--stall-secs N] [--fail-grace-secs N]  (ALWAYS background as a tracked task — its exit is your wake)"
   local dir root; dir="$(cd "$(dirname "$0")" && pwd -P)"; root="$(cd "$dir/../../.." && pwd -P)"
   [ -x "$dir/captain-watch.sh" ] || die "watch: $dir/captain-watch.sh missing or not executable"
   mkdir -p "$root/.cbr-watch" 2>/dev/null
@@ -976,21 +1020,47 @@ PY
   # stopped/done/absent WITH a marker = COMPLETE (verify + merge); WITHOUT = DIED mid-task
   # (read the logs). 2026-07-10: a finished builder read as a 4h stall because state=stopped
   # was dismissed as registry staleness with nothing here to say "its terminal signal exists".
-  local dmark="no"; [ -f "$wt/DONE.marker" ] && dmark="yes"
-  # readback fact (core law: build-loop.md). Computed BEFORE the session-presence
-  # branches: a finished or dead builder is exactly when a dispatcher reads this —
-  # at final verification, and in the post-mortem — so no SUMMARY may drop it.
-  # Reported, never gated: it does not touch $verdict, like the UNWATCHED alarm.
-  local rbstate; rbstate="$(readback_state "$wt")"
-  case "$rbstate" in
-    present) ok   "readback present in progress.md — read it against the plan before trusting the build" ;;
-    MISSING) warn "readback MISSING from progress.md — the builder never restated mission/scope/OUT" ;;
-    *)       note "no progress.md yet — too early to expect a readback" ;;
-  esac
+  # The SAME question the watchers ask, answered in the same place: a marker
+  # that is uncommitted, or that belongs to a strand which finished days ago,
+  # is not this builder's completion. Reading it by bare existence here is how
+  # status reports COMPLETE for a builder that crashed before committing.
+  local dmark="no"
+  local _b _dn; _b="$(git -C "$wt" branch --show-current 2>/dev/null || true)"
+  _dn="$(cbr_done_marker_name "$_b" 2>/dev/null || echo DONE.marker)"
+  cbr_marker_counts_as_done "$wt/$_dn" "$_b" && dmark="yes"
+
+  # Raw evidence beside every claim: every past status lie was a verdict word
+  # hiding a stale input, so the inputs themselves — ages in seconds, raw
+  # states — print here where the reader can see one go stale.
+  local ev_hb ev_pid ev_tr ev_ci ev_mk ev_root ev_sid ev_f now; now="$(date +%s)"
+  ev_root="$(cd "$(dirname "$0")/../../.." && pwd -P)"
+  if [ -f "$ev_root/.cbr-watch/$slug.needs-arm" ]; then ev_hb=needs-arm
+  elif [ -f "$ev_root/.cbr-watch/$slug.heartbeat" ]; then
+    ev_hb="$(( now - $(stat -f %m "$ev_root/.cbr-watch/$slug.heartbeat" 2>/dev/null || stat -c %Y "$ev_root/.cbr-watch/$slug.heartbeat" 2>/dev/null || echo "$now") ))s"
+  else ev_hb=absent; fi
+  case "$(worktree_occupancy "$wt_real")" in yes) ev_pid=alive ;; no) ev_pid=none ;; *) ev_pid=unknown ;; esac
+  ev_sid="${found%% *}"
+  ev_f="$(ls -t "$HOME/.claude/projects"/*/"${ev_sid:-@none@}"*.jsonl 2>/dev/null | head -1)"
+  if [ -n "$ev_f" ]; then ev_tr="$(( now - $(stat -f %m "$ev_f" 2>/dev/null || stat -c %Y "$ev_f" 2>/dev/null || echo "$now") ))s"; else ev_tr=absent; fi
+  ev_ci="$(git -C "$wt" log -1 --format=%ct 2>/dev/null)"
+  [ -n "$ev_ci" ] && ev_ci="$(( now - ev_ci ))s" || ev_ci=none
+  # cbr_marker_is_committed, not `git diff --quiet`: a rewritten-and-staged
+  # marker passes an unstaged-diff check while its durable (HEAD) content is
+  # something else — the exact stale input this line exists to expose.
+  # HEAD resolved ONCE and pinned through both the durability check and the
+  # displayed identity — a builder committing between two implicit-HEAD reads
+  # would label content validated against one revision with another's sha.
+  local ev_ref; ev_ref="$(git -C "$wt" rev-parse HEAD 2>/dev/null || true)"
+  if [ ! -e "$wt/$_dn" ]; then ev_mk=absent
+  elif [ -n "$ev_ref" ] && cbr_marker_is_committed "$wt/$_dn" "$ev_ref"; then
+    ev_mk="committed@$(git -C "$wt" log -1 --format=%h "$ev_ref" -- "$_dn" 2>/dev/null)"
+  else ev_mk=uncommitted; fi
+  note "EVIDENCE heartbeat=$ev_hb pid=$ev_pid transcript=$ev_tr commit=$ev_ci marker=$ev_mk"
+
   if [ -z "$found" ]; then
     if [ "$dmark" = yes ]; then
-      ok "no live session, but DONE.marker present — builder finished; verify + merge (do not treat as dead)"
-      echo "SUMMARY slug=$slug session=absent done_marker=yes readback=$rbstate verdict=complete"
+      ok "no live session, but the branch's DONE marker is present — builder finished; verify + merge (do not treat as dead)"
+      echo "SUMMARY slug=$slug session=absent done_marker=yes verdict=complete"
       return 0
     fi
     # "No registered session" is not "nobody is working here". A strand driven
@@ -1001,17 +1071,17 @@ PY
     # the folder, so ask that before pronouncing death.
     local occ; occ="$(worktree_occupancy "$wt_real")"
     case "$occ" in
-      yes) note "no background session, but a live process is rooted in this worktree — INTERACTIVE (or another harness): somebody is working here, do NOT relaunch or reap"
-         echo "SUMMARY slug=$slug session=absent live_process=yes done_marker=no readback=$rbstate verdict=interactive"
+      yes) note "no background session, but a live process is rooted in this worktree — INTERACTIVE (or another agent harness): somebody is working here, do NOT relaunch or reap"
+         echo "SUMMARY slug=$slug session=absent live_process=yes done_marker=no verdict=interactive"
          return 0 ;;
-      no) bad "no background session rooted in this worktree AND no live process in it — builder is not running here (no DONE.marker: died or never launched)"
-         echo "SUMMARY slug=$slug session=absent live_process=no done_marker=no readback=$rbstate verdict=died"
+      no) bad "no background session rooted in this worktree AND no live process in it — builder is not running here (no committed DONE marker: died or never launched)"
+         echo "SUMMARY slug=$slug session=absent live_process=no done_marker=no verdict=died"
          return 1 ;;
       *) # "Could not look" is not "nobody is there". Since the merge-ownership
          # rule turns a death verdict into permission to take a strand over, an
          # unanswerable liveness question must not be answered as death.
          bad "no background session, and the process table could NOT be inspected — liveness is UNPROVEN; do not relaunch, reap, or take this strand over on the strength of this"
-         echo "SUMMARY slug=$slug session=absent live_process=unknown done_marker=no readback=$rbstate verdict=unproven"
+         echo "SUMMARY slug=$slug session=absent live_process=unknown done_marker=no verdict=unproven"
          return 1 ;;
     esac
   fi
@@ -1090,10 +1160,10 @@ PY
   if [ "$watched" = yes ]; then
     ok "watcher armed (fresh heartbeat) for '$slug'"
   else
-    bad "UNWATCHED — no fresh watcher heartbeat. ARM NOW (background both):  cbr.sh watch $slug   |   then cbr.sh watch $slug --watchdog --cycle <id from the watcher's armed line>"
+    bad "UNWATCHED — no fresh watcher heartbeat. ARM NOW (background as a tracked task):  cbr.sh watch $slug"
   fi
 
-  echo "SUMMARY slug=$slug session=present state=$state last_commit_age_s=${age_s:-unknown} uncommitted=$dirty watched=$watched done_marker=$dmark live_process=$live_process readback=$rbstate verdict=$verdict"
+  echo "SUMMARY slug=$slug session=present state=$state last_commit_age_s=${age_s:-unknown} uncommitted=$dirty watched=$watched done_marker=$dmark live_process=$live_process verdict=$verdict"
   note "weigh last_commit_age + state against YOUR watch interval — silence/stall is the page, not 'busy'."
   [ "$verdict" = died ] && return 1
   return 0
@@ -1103,8 +1173,8 @@ PY
 # fleet
 #   The board: every live (or just-finished) fleet session, derived FRESH each run from the supervisor
 #   registry + git worktrees + roborev. Persists NOTHING — re-run it after a compaction to recover the
-#   picture (this is why the captain needs no context-only state). Role-aware by where it's invoked:
-#   from the primary checkout it's the CAPTAIN's full board; from an integration/* worktree it tags
+#   picture (this is why the dispatcher needs no context-only state). Role-aware by where it's invoked:
+#   from the primary checkout it's the full machine-wide board; from an integration/* worktree it tags
 #   ● your streams vs ○ another orchestrator's (read from your task_plan.md) so an orchestrator can't
 #   drift into someone else's session. Facts only — decides nothing.
 # ---------------------------------------------------------------------------
@@ -1114,11 +1184,11 @@ cmd_fleet() {
   root="$(repo_root)"
   inv_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?')"
   primary="$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)"
-  if [ "$root" = "$primary" ]; then role="captain"
+  if [ "$root" = "$primary" ]; then role="primary"
   elif printf '%s' "$inv_branch" | grep -q '^integration/'; then role="orchestrator"
   else role="other"; fi
 
-  # owned worktree basenames (orchestrator only): the cockpit-* tokens in THIS worktree's task_plan.md
+  # owned worktree basenames (orchestrator only): the worktree-prefix tokens in THIS worktree's task_plan.md
   # streams table. Fail-safe: unreadable -> empty -> generic caution, no ●/○ tags (never fail-confident).
   local owned; owned="$(mktemp)"; : > "$owned"
   if [ "$role" = "orchestrator" ] && [ -f "$root/task_plan.md" ]; then
@@ -1159,14 +1229,14 @@ for r in rows:
     if m: parts.append((r, m))
 
 print()
-if role == "captain":
-    print("fleet — CAPTAIN view: full board, ALL canon fleets machine-wide.")
+if role == "primary":
+    print("fleet — PRIMARY view: full board, ALL CBR fleets machine-wide.")
 elif role == "orchestrator":
-    print("fleet — ⚠ ALL canon fleet sessions machine-wide, not just yours.")
+    print("fleet — ⚠ ALL CBR fleet sessions machine-wide, not just yours.")
     print(f"  You orchestrate `{inv_branch}`. Act ONLY on ● rows (your task_plan.md);")
     print("  ○ rows are ANOTHER orchestrator's — do not read, merge, stop, or jump into them.")
 else:
-    print("fleet — ⚠ full board, ALL canon fleets machine-wide. Not an orchestrator, so")
+    print("fleet — ⚠ full board, ALL CBR fleets machine-wide. Not an orchestrator, so")
     print("  ownership can't be read from a fleet plan: ● = your current worktree only.")
     print("  Act only on sessions you own.")
 print()
@@ -1183,7 +1253,7 @@ else:
             rev = str(sum(1 for l in out.splitlines() if "open" in l.lower() or "fail" in l.lower()))
         except Exception: rev = "?"
         mine = os.path.basename(wt) in owned or wt == root
-        tag = ("  " if role == "captain" else ("● " if mine else "○ "))
+        tag = ("  " if role == "primary" else ("● " if mine else "○ "))
         print(f"  {tag}{wrole:12} {(r.get('sessionId','') or '')[:8]:9} {r.get('state','?'):8} {br:24} {age(gf(wt,['log','-1','--format=%ct'])):7} {rev:4} {os.path.basename(wt)}")
 print()
 print("  jump in: claude logs <sid>  |  detail: read <worktree>/task_plan.md  |  derived live, persists nothing")
@@ -1193,8 +1263,8 @@ PY
 
 # ---------------------------------------------------------------------------
 # arm <repo-path> [--no-probe]
-#   Scaffold the full CBR harness into another repo from templates/: the skill folder itself,
-#   Probity config + hooks, RoboRev config + the roborev-clean gate, the pre-commit skeleton,
+#   Install the full CBR control plane into another repo from templates/: the skill folder itself,
+#   Probity config + hooks, RoboRev config (advisory per-commit reviews), the pre-commit skeleton,
 #   re-injection docs, and the CBR conventions. IDEMPOTENT and NEVER-CLOBBER: every piece is
 #   create-if-absent; anything already there is reported and left untouched (settings.json gets a
 #   content check — present-but-Probity-less prints a manual-merge instruction instead of a copy).
@@ -1266,16 +1336,55 @@ cmd_arm() {
   put hooks/roborev-session-sweep.sh .claude/hooks/roborev-session-sweep.sh exec
   put hooks/post-compact-reground.sh .claude/hooks/post-compact-reground.sh exec
   put hooks/no-interactive-ask.sh .claude/hooks/no-interactive-ask.sh exec
+  put hooks/builder-stop-check.sh .claude/hooks/builder-stop-check.sh exec
 
-  # 3. RoboRev — config + the close-every-review gate script
+  # 3. RoboRev — config only. Per-commit reviews are advisory (2026-08-31
+  # cadence move): the blocking review check lives on the merge path.
   put roborev.toml .roborev.toml
-  put roborev-clean-gate.sh scripts/roborev-clean-gate.sh exec
+
+  # 3b. the single-source record gate — the LAW's mechanism, shipped with it.
+  # The checker is core (shared, provider-neutral) and is installed from the
+  # skill's core mirror rather than a leaf copy; the ownership table beside it
+  # is a starter the port edits to name its own records.
+  put record-ownership.json record-ownership.json
+  if [ -e "$target/scripts/record-single-source.sh" ]; then
+    note "exists, left untouched: scripts/record-single-source.sh"
+  else
+    mkdir -p "$target/scripts"
+    CBR_RSS="$SKILL_DIR/references/core/scripts/record-single-source.sh"
+    [ -f "$CBR_RSS" ] || CBR_RSS="$SKILL_DIR/../cbr-core/scripts/record-single-source.sh"
+    if cp "$CBR_RSS" "$target/scripts/record-single-source.sh"; then
+      chmod +x "$target/scripts/record-single-source.sh"
+      ok "installed scripts/record-single-source.sh (from the cbr-core mirror)"
+    else
+      bad "failed to install scripts/record-single-source.sh"; fails=$((fails+1))
+    fi
+  fi
+
+  # 3c. the merge review gate — the review wall at the merge boundary (per-commit
+  # reviews are advisory). Core script, installed from the core mirror like 3b.
+  if [ -e "$target/scripts/merge-review-gate.sh" ]; then
+    note "exists, left untouched: scripts/merge-review-gate.sh"
+  else
+    mkdir -p "$target/scripts"
+    CBR_MRG="$SKILL_DIR/references/core/scripts/merge-review-gate.sh"
+    [ -f "$CBR_MRG" ] || CBR_MRG="$SKILL_DIR/../cbr-core/scripts/merge-review-gate.sh"
+    if cp "$CBR_MRG" "$target/scripts/merge-review-gate.sh"; then
+      chmod +x "$target/scripts/merge-review-gate.sh"
+      ok "installed scripts/merge-review-gate.sh (from the cbr-core mirror)"
+    else
+      bad "failed to install scripts/merge-review-gate.sh"; fails=$((fails+1))
+    fi
+  fi
 
   # 4. pre-commit gate — skeleton hooks fail closed until real commands are wired
   put pre-commit-config.yaml .pre-commit-config.yaml
   if command -v pre-commit >/dev/null; then
-    if ( cd "$target" && pre-commit install >/dev/null 2>&1 ); then
-      ok "pre-commit hook installed"
+    # Both hook types, explicitly: the config's default_install_hook_types
+    # covers a plain install, but an older pre-commit ignores the key and an
+    # auto-committing merge then bypasses the entire battery.
+    if ( cd "$target" && pre-commit install --hook-type pre-commit --hook-type pre-merge-commit >/dev/null 2>&1 ); then
+      ok "pre-commit + pre-merge-commit hooks installed"
     else
       bad "pre-commit install failed"; fails=$((fails+1))
     fi
@@ -1330,7 +1439,7 @@ DOC
     note "the probe was NOT dispatched onto a half-armed repo"
     return 1
   fi
-  note "scaffold complete. EDIT-ME files ship FAIL-CLOSED: wire real commands into"
+  note "control plane complete. EDIT-ME files ship FAIL-CLOSED: wire real commands into"
   note ".pre-commit-config.yaml and real globs into probity.config.ts before the first build."
 
   # 7. the operability probe — guarded ≠ operable; arming ENDS with a gate proven to bite
@@ -1359,7 +1468,7 @@ DOC
 #   and RoboRev at once) — caught by a real agent round-trip via `roborev check-agents`.
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
-# closeout-pending — the merge/reap seam the ritual was missing
+# janitor_report — the merge/reap seam the ritual was missing (the old closeout-pending)
 #   The closeout ritual is law but nothing observed it, so merged worktrees piled
 #   up (17 dead ones before `closeout` existed; the ritual alone did not stop the
 #   pile from re-forming). This names them: a worktree whose branch is FULLY
@@ -1372,7 +1481,7 @@ DOC
 #   which is exactly how a merged worktree hides forever — so each skip prints its
 #   reason. Facts only; the reap decision stays with the human.
 # ---------------------------------------------------------------------------
-closeout_pending_report() {
+janitor_report() {
   local root="$1" ref="" c
   for c in main master; do git -C "$root" rev-parse -q --verify "$c" >/dev/null 2>&1 && { ref="$c"; break; }; done
   if [ -z "$ref" ]; then
@@ -1456,90 +1565,27 @@ EOF
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# readback — is the plan's mission/scope/OUT restated in the builder's own words?
-#
-# Core law (cbr-core/build-loop.md "Readback"): a dispatched builder's first act
-# is to write that restatement into progress.md, and the dispatcher checks it
-# before leaving the builder to run. PRESENCE is a deterministic fact, so it may
-# be reported; whether the readback is FAITHFUL is a judgment, so this never
-# gates and never returns non-zero (policy.md).
-#
-# "Present" demands substance, not the ritual word: a heading BEGINNING with
-# "readback" — a builder titling its restatement, where "P-C — readback laws in
-# core" is a journal entry about one — followed by at least three non-blank
-# lines before the next heading of the SAME OR SHALLOWER level. A sub-heading
-# does not end the readback, because the law asks for three named things
-# (mission, scope, OUT) and writing them as `### Mission` / `### OUT` is
-# following it, not evading it. Fenced code blocks are skipped — a quoted
-# template is documentation about the format, not a builder using it. An empty
-# heading is the failure this fact exists to catch: it is what a builder that
-# skimmed the plan produces.
-readback_state() {
-  local wt="$1" f="$wt/progress.md"
-  [ -f "$f" ] || { echo "no-progress-file"; return 0; }
-  awk '
-    { sub(/\r$/, "") }
-    # CommonMark fences, both flavours: a fence closes only on a run of the SAME
-    # character at least as long as the opener. Anything shorter, or the other
-    # flavour, is content — patching one shape at a time never converges here,
-    # so this follows the actual rule.
-    /^[[:space:]]*(```|~~~)/ {
-      match($0, /`+|~+/); ftype = substr($0, RSTART, 1); flen = RLENGTH
-      rest = substr($0, RSTART + RLENGTH)
-      if (!fence) { fence = 1; fchar = ftype; fmin = flen }        # opener may carry an info string
-      else if (ftype == fchar && flen >= fmin && rest ~ /^[[:space:]]*$/) { fence = 0 }
-      next                                                        # closer may carry only whitespace
-    }
-    fence { next }   # excluded everywhere, including under a valid heading
-    /^#+[[:space:]]/ {
-      match($0, /^#+/); lvl = RLENGTH
-      # Leading word, not "contains": a cap on heading length rejects a heading
-      # that explains itself ("Readback (mission, scope, OUT)") while still
-      # admitting a short journal title.
-      subject = substr($0, lvl + 1)
-      sub(/^[^[:alnum:]]+/, "", subject)
-      match(subject, /^[[:alnum:]]+/)
-      is_rb = (tolower(substr(subject, 1, RLENGTH)) == "readback")
-      if (in_rb) {
-        if (lvl <= rb_lvl) {
-          if (body >= 3) found = 1
-          in_rb = 0
-        } else next          # a sub-heading is part of the readback, not its end
-      }
-      if (is_rb) { in_rb = 1; rb_lvl = lvl; body = 0 }
-      next
-    }
-    in_rb && $0 ~ /[^[:space:]]/ { body++ }
-    END { if (found || (in_rb && body >= 3)) print "present"; else print "MISSING" }
-  ' "$f"
-}
 
-readback_report() {
-  local wt="$1" state
-  state="$(readback_state "$wt")"
-  case "$state" in
-    present) ok   "readback present in progress.md — check it against the plan's mission/scope/OUT (faithfulness is yours to judge, not this script's)" ;;
-    MISSING) warn "readback MISSING — progress.md has no restatement of mission/scope/OUT. A builder that skipped it is a builder that skimmed the plan; ask for it before letting it run further" ;;
-    *)       note "no progress.md yet in $wt — too early to expect a readback" ;;
-  esac
-  echo "readback=$state"
+# brick_report — thin leaf wrapper over the shared cbr_brick_report (strand-lib):
+# the two node_modules brick states may not be graded by two implementations
+# that can disagree. Colors the shared facts; grading stays in doctor.
+brick_report() {
+  local line
+  while IFS= read -r line; do
+    case "$line" in
+      BRICK\ *|BRICK-IN-WAITING*) warn "$line" ;;
+      SUMMARY*) echo "$line" ;;
+      *) note "$line" ;;
+    esac
+  done < <(cbr_brick_report "$1")
   return 0
 }
 
-cmd_readback() {
+cmd_brick() {
   local target="${1:-$PWD}"
-  local wt="$target"
-  [ -d "$wt" ] || wt="$(worktree_path "$target")"
-  [ -d "$wt" ] || die "readback: '$target' is neither a directory nor a provisioned slug"
-  readback_report "$wt"
-}
-
-cmd_closeout_pending() {
-  local target="${1:-$PWD}"
-  [ -d "$target" ] || die "closeout-pending: '$target' is not a directory"
-  local root; root="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null)"     || die "closeout-pending: '$target' is not inside a git repo"
-  closeout_pending_report "$root"
+  [ -d "$target" ] || die "brick: '$target' is not a directory"
+  target="$(cd "$target" && pwd -P)"
+  brick_report "$target"
 }
 
 cmd_doctor() {
@@ -1571,7 +1617,7 @@ cmd_doctor() {
          fails=$((fails+1)) ;;
       *) bad "settings.json unreadable/invalid JSON"; fails=$((fails+1)) ;;
     esac
-    # Compaction triple (operator-set; canon prior art): compact late, at 85% of 350k.
+    # Compaction triple (operator-set; reference-host prior art): compact late, at 85% of 350k.
     local acw
     acw="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(d.get('autoCompactEnabled'),d.get('autoCompactWindow'),d.get('autoCompactThreshold'))" "$root/.claude/settings.json" 2>/dev/null)"
     if [ "$acw" = "True 350000 0.85" ]; then
@@ -1584,19 +1630,35 @@ cmd_doctor() {
     bad ".claude/settings.json missing — no hooks fire at all"; fails=$((fails+1))
   fi
   local h
-  for h in roborev-gate.sh roborev-session-sweep.sh post-compact-reground.sh no-interactive-ask.sh; do
+  for h in roborev-gate.sh roborev-session-sweep.sh post-compact-reground.sh no-interactive-ask.sh \
+           builder-stop-check.sh; do
     [ -x "$root/.claude/hooks/$h" ] \
       && ok "hook present + executable: .claude/hooks/$h" \
       || { bad "hook missing or not executable: .claude/hooks/$h"; fails=$((fails+1)); }
   done
 
-  # RoboRev: config, gate script, daemon, and the OAuth round-trip
+  # RoboRev: config, daemon, and the OAuth round-trip (per-commit reviews are
+  # advisory since the 2026-08-31 cadence move; the blocking check is on merge)
   [ -f "$root/.roborev.toml" ] \
     && ok ".roborev.toml present" \
     || { bad ".roborev.toml missing — commits get no review"; fails=$((fails+1)); }
-  [ -x "$root/scripts/roborev-clean-gate.sh" ] \
-    && ok "roborev-clean gate script present + executable" \
-    || { bad "scripts/roborev-clean-gate.sh missing or not executable"; fails=$((fails+1)); }
+  # armed ports carry it at scripts/; the canonical repo runs it from core
+  if [ -x "$root/scripts/merge-review-gate.sh" ] || [ -x "$root/skills/cbr-core/scripts/merge-review-gate.sh" ]; then
+    ok "merge review gate present + executable"
+  else
+    bad "merge-review-gate.sh missing or not executable — the merge boundary has no review wall"; fails=$((fails+1))
+  fi
+  # Auto-committing merges fire ONLY pre-merge-commit — git has no fallback to
+  # the pre-commit hook (verified empirically 2026-08-31: a failing pre-commit
+  # hook did not run on `git merge`), so a missing pre-merge-commit hook means
+  # every commit-stage gate is silently bypassed on the primary merge path.
+  pmc="$(git -C "$root" rev-parse --git-path hooks/pre-merge-commit 2>/dev/null)"
+  case "$pmc" in /*) ;; *) pmc="$root/$pmc" ;; esac
+  if [ -e "$pmc" ] && grep -qE 'pre-commit|merge-review-gate' "$pmc" 2>/dev/null; then
+    ok "pre-merge-commit hook present and runs the gate battery"
+  else
+    bad "no gate-running pre-merge-commit hook — auto-committing merges bypass the whole battery including the review wall; run 'pre-commit install' (config declares both hook types)"; fails=$((fails+1))
+  fi
   if command -v roborev >/dev/null; then
     if ( cd "$root" && roborev list >/dev/null 2>&1 ); then
       ok "roborev daemon reachable"
@@ -1616,9 +1678,6 @@ cmd_doctor() {
 
   # pre-commit gate
   if [ -f "$root/.pre-commit-config.yaml" ]; then
-    grep -q "roborev-clean" "$root/.pre-commit-config.yaml" \
-      && ok "roborev-clean gate wired in .pre-commit-config.yaml" \
-      || { bad "roborev-clean gate MISSING from .pre-commit-config.yaml — reviews can be outrun"; fails=$((fails+1)); }
     grep -q "EDIT ME" "$root/.pre-commit-config.yaml" \
       && { bad "EDIT-ME placeholder hooks still wired — every commit fails closed until real typecheck/test commands go in"; fails=$((fails+1)); }
   else
@@ -1636,32 +1695,46 @@ cmd_doctor() {
   # push firewall
   local pp; pp="$(git -C "$root" rev-parse --git-path hooks/pre-push 2>/dev/null)"
   case "$pp" in /*) : ;; *) pp="$root/$pp" ;; esac
-  if [ -n "$pp" ] && [ -e "$pp" ] && grep -q "CBR_ALLOW_PUSH" "$pp" 2>/dev/null; then
-    local want_pp; want_pp="$(mktemp)"; write_push_firewall "$want_pp"
-    if cmp -s "$want_pp" "$pp" && [ -x "$pp" ]; then
-      ok "push firewall installed (current body: branch layer + pushed-ref layer)"
-    elif cmp -s "$want_pp" "$pp"; then
-      bad "push firewall body is current but NOT executable — git silently skips it; re-run arm (or chmod +x $pp)"; fails=$((fails+1))
-    else
-      bad "push firewall is a stale or edited body — a push to main may pass; re-run arm to upgrade"; fails=$((fails+1))
-    fi
-    rm -f "$want_pp"
-  else
-    bad "push firewall missing — an unattended builder could push"; fails=$((fails+1))
-  fi
+  # The verdict is the shared library's, not this script's: a guard on the
+  # branch that auto-deploys may not be graded by two implementations that can
+  # disagree. And it is a question about BEHAVIOUR — the override token decides
+  # only whether the body is ours to rewrite, so a hook that denies every route
+  # to main without that token is a firewall, not an absence of one.
+  local want_pp; want_pp="$(mktemp)"; write_push_firewall "$want_pp"
+  local fwv; fwv="$(cbr_push_firewall_verdict "$pp" "$want_pp")"
+  rm -f "$want_pp"
+  case "$fwv" in
+    current) ok "push firewall installed (current body: branch layer + pushed-ref layer)" ;;
+    behaves) ok "push firewall is a composed/edited body, but BEHAVES correctly (builder branches and pushes to main are both denied) — left untouched" ;;
+    current-not-executable|not-executable)
+      bad "push firewall at $pp is not executable — git silently skips it; re-run arm (or chmod +x $pp)"; fails=$((fails+1)) ;;
+    wall) bad "push firewall at $pp denies ORDINARY pushes too — that is not a firewall, it is a wall; fix the hook"; fails=$((fails+1)) ;;
+    missing) bad "push firewall missing — an unattended builder could push"; fails=$((fails+1)) ;;
+    *) bad "push firewall at $pp does NOT deny every route to main ($fwv) — a push to main may pass; re-run arm to upgrade"; fails=$((fails+1)) ;;
+  esac
 
   # re-injection docs
   { [ -e "$root/AGENTS.md" ] || [ -e "$root/CLAUDE.md" ]; } \
     && ok "agent entry doc present (AGENTS.md/CLAUDE.md)" \
     || { bad "no AGENTS.md/CLAUDE.md — agents boot blind"; fails=$((fails+1)); }
 
+  # The two brick states. A dangling link is graded a FAILURE — the control plane is
+  # already unusable, and the session it bricks cannot repair itself. A foreign
+  # link stays WARN-only: everything still works, and the repair (plus the
+  # do-not-reap warning) is a human decision.
+  echo
+  local brick_out
+  brick_out="$(brick_report "$root")"
+  printf '%s\n' "$brick_out"
+  case "$brick_out" in *"SUMMARY brick dangling=0 "*|*"store=absent"*) ;; *) fails=$((fails+1)) ;; esac
+
   # WARN-ONLY: merged-but-unreaped worktrees. Deliberately outside $fails — a
-  # pending closeout is housekeeping the human owns, not a broken harness, and a
+  # pending closeout is housekeeping the human owns, not a broken control plane, and a
   # doctor that fails on it would block builds over a stale folder.
   echo
-  closeout_pending_report "$root"
+  janitor_report "$root"
 
-  # WARN-ONLY: stale harness tooling (strand-lib probe; fails open on missing
+  # WARN-ONLY: stale control-plane tooling (strand-lib probe; fails open on missing
   # tools/network). Outside $fails — updating is a human decision, never a gate.
   if command -v cbr_tool_staleness_report >/dev/null 2>&1; then
     local pin stale
@@ -1742,17 +1815,15 @@ PY
   ok "no live session owns the worktree (registry-proven)"
 
   # 1b. PROVE UNOCCUPIED — the registry only knows about sessions IT launched. A
-  #     strand driven interactively, or by another harness, is invisible to it,
+  #     strand driven interactively, or by another agent harness, is invisible to it,
   #     and the merge-ownership rule (core build-loop step 9) makes that
   #     difference matter: taking a strand over is licensed by the builder being
   #     PROVEN dead. Occupancy is a live process rooted in the folder, and for a
   #     destructive command an unanswerable question is a refusal, not a pass.
-  if command -v cbr_path_has_live_process >/dev/null; then
-    local occrc=0
-    if cbr_path_has_live_process "$wt"; then occrc=0; else occrc=$?; fi
-    case "$occrc" in
-      0) die "closeout: a live process is rooted in $wt — somebody is working in this strand (interactive session, or another harness). The builder owns its own merge and closeout; take it over only when it is proven dead." ;;
-      1) ok "no live process is rooted in the worktree (process-table-proven)" ;;
+  if command -v cbr_worktree_occupancy >/dev/null; then
+    case "$(cbr_worktree_occupancy "$wt")" in
+      yes) die "closeout: a live process is rooted in $wt — somebody is working in this strand (interactive session, or another agent harness). Closeout may only reap an empty worktree — wait, or prove the occupant dead." ;;
+      no) ok "no live process is rooted in the worktree (process-table-proven)" ;;
       *) [ "${CBR_ALLOW_UNPROVEN_OCCUPANCY:-}" = "1" ] \
            || die "closeout: the process table could not be inspected, so an occupant cannot be ruled out — refusing to reap $wt on an unproven liveness answer. Install lsof, or re-run with CBR_ALLOW_UNPROVEN_OCCUPANCY=1 if you have checked by hand."
          note "occupancy UNPROVEN, and an operator asserted the worktree is empty (CBR_ALLOW_UNPROVEN_OCCUPANCY=1)" ;;
@@ -1815,9 +1886,10 @@ PY
   local base_branch; base_branch="$(git -C "$root" branch --show-current 2>/dev/null)"
   [ -n "$base_branch" ] || base_branch="$ref"
 
+  local done_name; done_name="$(cbr_done_marker_name "$branch")"
   duties="$(cbr_closeout_base_duties "$root" "$branch" "$base_branch" "$arch" \
-              DONE.marker task_plan.md \
-              task_plan.md progress.md findings.md STATUS.md DONE.marker NEEDS-OPERATOR.md \
+              "$done_name" task_plan.md \
+              task_plan.md progress.md findings.md STATUS.md "$done_name" NEEDS-OPERATOR.md \
               KNOWN-LIMITATIONS.md MORNING-REPORT.md ASK-ORCH.md ORCH-ANSWER.md \
               WAITING-ON-BACKEND.md)" \
     || die "closeout: a base-branch duty failed ($duties) — the worktree and branch are UNTOUCHED; fix it and re-run"
@@ -1849,31 +1921,21 @@ PY
 # because leaks still happen (crashed sessions, abandoned experiments); policy keeps rot at
 # zero, the janitor keeps a leak's lifetime to days instead of months. ----
 cmd_janitor() {
-  local root ref="" c
-  root="$(repo_root)"
-  for c in main master; do git -C "$root" rev-parse -q --verify "$c" >/dev/null 2>&1 && { ref="$c"; break; }; done
-  [ -n "$ref" ] || die "janitor: no main/master branch found"
-  echo "janitor: read-only reconciliation vs '$ref' — reap candidates need: cbr.sh closeout <slug> [--into <ref>]"
+  # ONE reconciliation view (janitor and the old closeout-pending merged,
+  # 2026-08-31): merged-but-unreaped worktrees (with the exact reap command),
+  # orphan branches, stale watch files. Read-only; a human approves each reap.
+  local target="${1:-$PWD}"
+  [ -d "$target" ] || die "janitor: '$target' is not a directory"
+  local root; root="$(git -C "$target" rev-parse --show-toplevel 2>/dev/null)" || die "janitor: '$target' is not inside a git repo"
+  echo "janitor: read-only reconciliation — reap candidates need: cbr.sh closeout <slug> [--into <ref>]"
+  janitor_report "$root"
 
-  local reap=0 active=0 p b d
-  # IFS= : the default IFS would strip leading/trailing whitespace from a legal
-  # worktree path, sending every later cd/git call to a path that does not exist.
-  while IFS= read -r p; do
-    [ -z "$p" ] && continue
-    [ "$(cd "$p" 2>/dev/null && pwd -P)" = "$(cd "$root" && pwd -P)" ] && continue
-    b="$(git -C "$p" branch --show-current 2>/dev/null)"
-    if [ -z "$b" ]; then note "DETACHED  $p — no branch, inspect manually"; continue; fi
-    d="$(git -C "$p" status --porcelain 2>/dev/null | grep -c . || true)"
-    if [ -z "$(git -C "$root" diff --name-only "$ref...$b" -- packages adapters e2e public scripts 2>/dev/null)" ]; then
-      echo "  REAPABLE  $p  branch=$b  dirty=$d"
-      reap=$((reap + 1))
-    else
-      echo "  ACTIVE    $p  branch=$b  dirty=$d  (code not in $ref)"
-      active=$((active + 1))
-    fi
-  done <<EOF
-$(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | tail -n +2)
-EOF
+  # Orphan/stale scans read the PRIMARY checkout: watch records live under it,
+  # and a janitor invoked from a linked worktree must not scan its own (empty)
+  # .cbr-watch and report a clean board.
+  local primary
+  primary="$(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1)"
+  [ -n "$primary" ] && root="$(cd "$primary" 2>/dev/null && pwd -P || echo "$root")"
 
   local orphans
   orphans="$(git -C "$root" for-each-ref --format='%(refname:short)' 'refs/heads/stream/*' 'refs/heads/integration/*' 2>/dev/null |
@@ -1890,8 +1952,8 @@ EOF
   stale="$(ls "$root/.cbr-watch" 2>/dev/null | sed 's/\.[^.]*$//' | sort -u |
     while read -r s; do [ -d "$(dirname "$root")/cockpit-$s" ] || echo "$s"; done)"
   [ -n "$stale" ] && { echo "  STALE .cbr-watch entries (stream gone):"; echo "$stale" | sed 's/^/          /'; }
-
-  echo "SUMMARY janitor reapable=$reap active=$active orphan_branches=$(echo "$orphans" | grep -c . || true)"
+  echo "SUMMARY janitor orphan_branches=$(echo "$orphans" | grep -c . || true) stale_watch=$(echo "$stale" | grep -c . || true)"
+  return 0
 }
 
 case "${1:-help}" in
@@ -1904,8 +1966,7 @@ case "${1:-help}" in
   doctor)    shift; cmd_doctor "$@" ;;
   closeout)  shift; cmd_closeout "$@" ;;
   janitor)   shift; cmd_janitor "$@" ;;
-  closeout-pending) shift; cmd_closeout_pending "$@" ;;
-  readback) shift; cmd_readback "$@" ;;
+  brick)     shift; cmd_brick "$@" ;;
   help|-h|--help)
     cat <<'USAGE'
 cbr.sh — controlled-build-run companion: the deterministic launch rail for parallel builders.
@@ -1929,22 +1990,20 @@ verdict. There is no "do everything" command — run the one for the moment you'
       state? last commit age? open reviews?). Prints facts and exits non-zero only on hard-dead
       facts. Not a verdict. Also flags UNWATCHED — a live builder with no armed watcher.
 
-  cbr.sh watch <slug> [--watchdog [--cycle <id>]]
-      Arm the captain's fire-once event trap over a dispatched builder (the step `launch` prints as
-      REQUIRED). ALWAYS background as a tracked task so its exit is the wake; run it twice — bare
-      (watcher) FIRST, then --watchdog --cycle <id> using the cycle id the watcher's armed line
-      prints (binding the dead-man to that exact cycle is what lets it retire cleanly after DONE
-      instead of paging). Wraps captain-watch.sh; clears the needs-arm sentinel.
+  cbr.sh watch <slug>
+      Arm the dispatcher's fire-once event trap over a dispatched builder (the step `launch` prints as
+      REQUIRED). ALWAYS background as a tracked task so its exit is the wake. Wraps
+      captain-watch.sh; clears the needs-arm sentinel.
 
   cbr.sh fleet
       The board: every live fleet session (orchestrators + builders), derived FRESH from the
       supervisor registry + git worktrees + roborev — persists nothing, so re-run it to recover
-      the picture after a compaction. Role-aware: CAPTAIN's full board from the primary checkout;
+      the picture after a compaction. Role-aware: full machine-wide board from the primary checkout;
       from an integration/* worktree it tags ● your streams vs ○ another orchestrator's. Facts only.
 
   cbr.sh arm <repo-path> [--no-probe]
-      Scaffold the full CBR harness into another repo from this skill's templates/: skill folder,
-      Probity config+hook wiring, RoboRev config + roborev-clean gate, pre-commit skeleton
+      Install the full CBR control plane into another repo from this skill's templates/: skill folder,
+      Probity config+hook wiring, RoboRev config (advisory reviews), pre-commit skeleton
       (fail-closed EDIT-MEs), re-injection docs, gitignore entries, push firewall. Create-if-absent
       and never-clobber; idempotent. ENDS by dispatching the operability probe (guarded ≠ operable)
       unless --no-probe. See SETUP.md for what the six pieces are and why.
@@ -1952,7 +2011,7 @@ verdict. There is no "do everything" command — run the one for the moment you'
   cbr.sh doctor [<repo-path>]
       READ-ONLY pre-flight for an armed repo (run before EVERY build): per-piece PASS/FAIL facts —
       skill folder, Probity wiring, hooks, RoboRev config/daemon, the OAuth agent round-trip (the
-      silent killer), pre-commit + roborev-clean gate, push firewall, entry docs. Changes nothing.
+      silent killer), pre-commit, push firewall, entry docs. Changes nothing.
 
   cbr.sh closeout <slug> [--into <ref>] [--force-dirty]
       The death ritual, symmetric with provision — run as the FINAL step of every stream merge
@@ -1963,32 +2022,14 @@ verdict. There is no "do everything" command — run the one for the moment you'
       docs/streams/archive/<slug>/, then reaps: worktree removed, branch deleted, watch files
       cleaned. A merge is not complete until closeout has run.
 
-  cbr.sh janitor
-      READ-ONLY reconciliation backstop over closeout: lists worktrees whose branch code is fully
-      in main (REAPABLE), worktrees still carrying unmerged code (ACTIVE), orphan stream/*
-      branches with no worktree, and stale .cbr-watch files. Deletes nothing — a human approves
-      each reap. Run at merge gates and on request (no scheduler); a leak should live days, not months.
-
-  cbr.sh closeout-pending [<repo-or-worktree>]
-      WARN-ONLY: names every worktree whose BRANCH is fully merged into main — i.e. closeout was
-      owed and never run — and prints the reap command for each. Skips (loudly, with the reason)
-      any worktree carrying uncommitted files or with a live process rooted in it, and never the
-      primary checkout. `doctor` runs this as its last step, outside checks_failed: a pending
-      closeout is housekeeping, not a broken harness. Deletes nothing. Note the difference from
-      `janitor`, which asks whether the branch's CODE reached main; this asks whether the BRANCH did.
-
-  cbr.sh readback [<slug-or-worktree>]
-      Reports whether a builder's progress.md carries the readback core law requires before it
-      builds (mission, locked scope, OUT list, in its own words): readback=present | MISSING |
-      no-progress-file. "Present" needs a heading whose SUBJECT is the readback (contains
-      BEGINS with the word "readback", so a journal entry that merely mentions one does not
-      count) plus at least three non-blank lines under it. A sub-heading does not END the
-      readback, though only its non-blank body lines count; fenced code blocks are excluded. No
-      readback STATE ever fails: all three exit 0, because presence is a fact, faithfulness is
-      a judgment, and only the dispatcher reading it against the plan can decide that. (An
-      unresolvable slug or path is a caller error, not a state, and still exits non-zero — a
-      typo must not read as a pass.) `status` prints the same fact in every SUMMARY where the
-      worktree exists, including the session-absent ones.
+  cbr.sh janitor [<repo-or-worktree>]
+  cbr.sh brick [<repo-or-worktree>]      node_modules brick self-check (doctor runs it too)
+      READ-ONLY reconciliation (absorbed the old closeout-pending, 2026-08-31): names every
+      worktree whose branch is fully merged into main with the exact reap command; skips, loudly,
+      any worktree with uncommitted files or a live process rooted in it, never the primary
+      checkout; then lists orphan stream/* branches and stale .cbr-watch files. Deletes nothing —
+      a human approves each reap. `doctor` runs the merged-worktree half as its last step, outside
+      checks_failed. Run at merge gates and on request; a leak should live days, not months.
 
 The model/effort defaults track SKILL.md "The model dial"; pass --model/--effort to override.
 The prose in SKILL.md is the policy and the why — this script is just the hands.

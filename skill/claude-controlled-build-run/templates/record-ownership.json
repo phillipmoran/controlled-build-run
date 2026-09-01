@@ -1,0 +1,25 @@
+{
+  "_note": "Which record file OWNS each class of fact. Every other record links to the owner instead of restating it — a fact written twice is a fact that will be wrong in one of the two, with nothing to say which. Edit the owners and patterns to match YOUR records; a class whose pattern matches nothing in its own owner fails the gate closed, so this table cannot quietly go stale. Declare stalenessCheck only with a reason: \"sometimes-empty\" for a record that is legitimately empty early in a strand, \"never-in-owner\" for a forbidden restatement shape that is not a record at all. Declaring one buys an obligation: the class must also carry \"examples\" — at least one line the pattern MUST match — because the opt-out is exactly what removes the live record's power to prove the pattern still recognizes anything. An empty, null, or non-list \"examples\" is refused; it pins nothing while reading like a guarantee.",
+  "facts": [
+    {
+      "name": "the observer's status fields",
+      "owner": "STATUS.md",
+      "pattern": "^[\\s>]*(state|phase|branch|blocked_on|last_phase_complete)[ \\t]*="
+    },
+    {
+      "name": "the plan's phase checkboxes",
+      "owner": "task_plan.md",
+      "pattern": "^[\\s>]*[-*+][ \\t]*\\[[ xX]\\][ \\t]*[*_]*[ \\t]*(P[-0-9]|Phase[ \\t]*[0-9]|Stage[ \\t]*[0-9])"
+    },
+    {
+      "name": "the phase-checkpoint table rows",
+      "owner": "task_plan.md",
+      "pattern": "^[\\s>]*\\|[ \\t]*[*_]*[ \\t]*(P[-0-9]|Phase[ \\t]*[0-9]|Stage[ \\t]*[0-9])[^|]*\\|[ \\t]*`?[0-9a-f]{7}",
+      "stalenessCheck": "sometimes-empty",
+      "examples": [
+        "| P3 | `a7d3ad0` | independent read-only subagent | 10 findings |",
+        "| Phase 2 | 7cff781 | reviewer | ok |"
+      ]
+    }
+  ]
+}

@@ -35,7 +35,7 @@ fi
 # finding prose may itself contain those words and must NOT be swallowed. We do
 # NOT grep the body for "no issues found" — a PASS never reaches here, so that
 # clause only risked suppressing a FAIL whose prose used the phrase (RoboRev
-# job 99). The roborev-clean pre-commit gate stays the hard backstop regardless.
+# job 99). The merge-path review gate stays the hard backstop regardless.
 review="$(roborev show "$head_sha" 2>/dev/null)"
 first_line="$(printf '%s\n' "$review" | head -1)"
 if [ -z "$review" ] \

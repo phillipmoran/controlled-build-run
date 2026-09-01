@@ -1,21 +1,22 @@
-# SETUP — arm the controlled-build-run harness on this repo
+# SETUP — arm the controlled-build-run control plane on this repo
 
 **You are an agent. You have been pointed at this folder, which was dropped into a
-target repository. Your job: install and arm the controlled-build-run harness on
+target repository. Your job: install and arm the controlled-build-run control plane on
 THIS repo, then verify it.** Follow the steps in order. Steps marked **[HUMAN]**
 need a person — do them, or pause and ask for them; you cannot do them yourself.
 
-> What you are installing: a plan-driven build harness with **four automatic
+> What you are installing: a plan-driven control plane with **four automatic
 > gates** — **Probity** (TDD + naming guard, blocks untested writes), **pre-commit**
-> (format/lint/types/tests, blocks the commit), **RoboRev** (per-commit LLM review),
-> and the **roborev-clean** gate (blocks a commit while reviews are open) — plus
+> (format/lint/types/tests, blocks the commit), and **RoboRev** (per-commit LLM
+> review, ADVISORY since the 2026-08-31 cadence move — the blocking review
+> check rides the merge path) — plus
 > **drift-proof hooks** (session-start sweep + post-compaction re-ground) and an
 > optional **`cbr.sh`** rail for dispatching parallel `claude --bg` builders. The
 > skill prose in `skill/claude-controlled-build-run/SKILL.md` is the policy and the *why*;
 > this file is the install procedure.
 
 The golden rule for every step: **MERGE, ADAPT, VERIFY — never blind-overwrite.**
-This harness is powerful; clobbering an existing `.claude/settings.json`,
+This control plane is powerful; clobbering an existing `.claude/settings.json`,
 `.pre-commit-config.yaml`, or `.roborev.toml` is the main hazard. If a file
 already exists, merge into it.
 
@@ -29,26 +30,26 @@ Check what's installed; install what's missing.
 for c in claude roborev git jq node npx python3; do command -v "$c" >/dev/null && echo "ok  $c" || echo "MISSING $c"; done
 command -v uv >/dev/null && echo "ok  uv (optional)" || echo "-- uv (optional, only if your repo is Python/uv)"
 command -v gitleaks >/dev/null && echo "ok  gitleaks (optional)" || echo "-- gitleaks (optional secret scan)"
-claude --version   # need a build with `--bg` + `claude agents` (the origin host proven on 2.1.186) for fleet dispatch
+claude --version   # need a build with `--bg` + `claude agents` (reference host proven on 2.1.186) for fleet dispatch
 roborev version
 ```
 
 Install the missing ones (macOS/Homebrew shown; adapt for your OS):
 - `roborev`: `brew install roborev` (or see the RoboRev project). Required.
-- `jq`: `brew install jq`. Required — the hooks emit their JSON through it and **fail open without it** (the harness silently degrades).
-- `node`/`npx`: any recent Node (the origin host: node 24, npm 11). Required — Probity is fetched by `npx`.
+- `jq`: `brew install jq`. Required — the hooks emit their JSON through it and **fail open without it** (the control plane silently degrades).
+- `node`/`npx`: any recent Node (reference: node 24, npm 11). Required — Probity is fetched by `npx`.
 - `uv`: `brew install uv`. Only if your repo uses Python via uv.
 - `gitleaks`: `brew install gitleaks`. Only if you keep the gitleaks pre-commit hook.
-- `pre-commit`: install directly (`pipx install pre-commit`) **or** rely on `uv run pre-commit` if you use uv. (the origin host runs it through uv; it is not on PATH there.)
+- `pre-commit`: install directly (`pipx install pre-commit`) **or** rely on `uv run pre-commit` if you use uv. (the reference host runs it through uv; it is not on PATH there.)
 - `mattpocock-skills` plugin: **optional, per machine** — interactive design
   tooling (`/grill-me` planning interviews, `/improve-codebase-architecture`
-  module-depth scans at plan formation and acceptance). The harness's law
+  module-depth scans at plan formation and acceptance). The control plane's law
   references these methods in its own words, so nothing breaks without the
   plugin; install it from the official plugin marketplace where you want the
   interactive versions.
 
 **Hard floor:** if `claude --bg` is unsupported by the installed CLI, the parallel
-*builder dispatch* (`cbr.sh`) won't work — the solo build harness still does. Don't
+*builder dispatch* (`cbr.sh`) won't work — the solo control plane still does. Don't
 proceed to fleet dispatch on an older CLI.
 
 ## Tool notes (the gotchas — pointed at from the steps below)
@@ -81,9 +82,9 @@ docs point **here** instead of repeating it, so there is one copy to keep curren
    (`PreToolUse`) and the RoboRev wake (`PostToolUse`) fire because `.claude/settings.json`
    wires them into Claude Code's hook events, and Probity acts only on the files its
    `probity.config.ts` globs name (your code tree — not docs/config). Run this kit on a
-   **different** agent harness (Codex, Copilot, etc.) and that hook mechanism may not exist
+   **different** agent harness (Codex, Copilot, etc.) and that agent harness may not expose the same hook mechanism
    at all — the gate can be **silently dead**. Don't assume it's armed: run the smoke test
-   (Step 7) and the live prove-NO / prove-YES (Step 8) on YOUR harness before trusting it.
+   (Step 7) and the live prove-NO / prove-YES (Step 8) on your agent harness before trusting it.
 
 ## Step 1 — [HUMAN] Auth + repo trust (the only unavoidable human steps)
 
@@ -102,7 +103,7 @@ docs point **here** instead of repeating it, so there is one copy to keep curren
 Before editing any template you must know the target. Determine and note:
 - Languages + package/source layout (what Probity should guard, what the gates run on).
 - The real **format / lint / typecheck / test** commands.
-- The repo's **binding docs** — its equivalents of the origin host's `CONSTITUTION.md` /
+- The repo's **binding docs** — its equivalents of the reference host's `CONSTITUTION.md` /
   `ENGINEERING.md` / `GLOSSARY.md` / `AGENTS.md` / `contracts/` — or note it has none.
 - Its **closeout** ritual, if any.
 
@@ -122,13 +123,13 @@ mkdir -p skills .claude/skills .claude/commands scripts .claude/hooks
 cp -R "$KIT/skill/claude-controlled-build-run"            skills/
 # required sibling skills
 cp -R "$KIT/sibling-skills/test-driven-development" skills/
-cp -R "$KIT/sibling-skills/cyclomatic-complexity"   skills/
 cp -R "$KIT/sibling-skills/planning-with-files"     .claude/skills/   # see caveat below
 # optional sibling skills (install if you want them)
+cp -R "$KIT/sibling-skills/cyclomatic-complexity"   skills/            # optional per-project complexity ceiling (operator-ratified 2026-08-30)
 cp -R "$KIT/sibling-skills/fusion"                  .claude/skills/    # design-panel; needs `codex`/`gemini` CLIs
 cp "$KIT/sibling-skills/fusion/commands/"*.md       .claude/commands/  # /fusion-gpt5.5, /fusion-opus4.8
-cp -R "$KIT/sibling-skills/stage-review"            skills/            # optional, the origin host-shaped review cadence
-cp -R "$KIT/sibling-skills/closeout"                .claude/skills/    # optional, the origin host-shaped closeout
+cp -R "$KIT/sibling-skills/stage-review"            skills/            # optional, reference-host-shaped review cadence
+cp -R "$KIT/sibling-skills/closeout"                .claude/skills/    # optional, reference-host-shaped closeout
 ```
 
 - **`planning-with-files` caveat (important):** it ships its OWN hooks in its
@@ -146,37 +147,36 @@ cp -R "$KIT/sibling-skills/closeout"                .claude/skills/    # optiona
   `gemini` CLI for the richer panels; without them it falls back to the
   always-available two-Opus panel. The core build loop never requires fusion.
 
-## Step 4 — Install the harness hook + gate scripts (verbatim)
+## Step 4 — Install the control-plane hook + gate scripts (verbatim)
 
 ```bash
-cp "$KIT/harness/hooks/roborev-gate.sh"            .claude/hooks/
-cp "$KIT/harness/hooks/roborev-session-sweep.sh"   .claude/hooks/
-cp "$KIT/harness/hooks/post-compact-reground.sh"   .claude/hooks/   # TEMPLATE — edit in Step 5
-cp "$KIT/harness/scripts/roborev-clean-gate.sh"    scripts/         # MUST be at <repo>/scripts/ (the pre-commit entry hardcodes ./scripts/roborev-clean-gate.sh)
-chmod +x .claude/hooks/*.sh scripts/roborev-clean-gate.sh
+cp "$KIT/control-plane/hooks/roborev-gate.sh"            .claude/hooks/
+cp "$KIT/control-plane/hooks/roborev-session-sweep.sh"   .claude/hooks/
+cp "$KIT/control-plane/hooks/post-compact-reground.sh"   .claude/hooks/   # TEMPLATE — edit in Step 5
+cp "$KIT/skill/claude-controlled-build-run/references/core/scripts/merge-review-gate.sh" scripts/  # the merge-boundary review wall (the pre-commit entry hardcodes ./scripts/merge-review-gate.sh)
+chmod +x .claude/hooks/*.sh scripts/merge-review-gate.sh
 ```
 
-`roborev-gate.sh`, `roborev-session-sweep.sh`, and `roborev-clean-gate.sh` are fully
+`roborev-gate.sh` and `roborev-session-sweep.sh` are fully
 project-agnostic (they use only `roborev`/`git`/`jq`/`python3`) — leave them as-is.
 
 ## Step 5 — Merge config + fill in the templates (the judgment work)
 
-1. **`.claude/settings.json`** — **MERGE** `harness/settings.hooks.json` into it
+1. **`.claude/settings.json`** — **MERGE** `control-plane/settings.hooks.json` into it
    (preserve any existing hooks; don't overwrite). It wires Probity (PreToolUse),
    the RoboRev gate (PostToolUse, `asyncRewake`), and the two SessionStart hooks
    (sweep + reground/`compact`). Then set/confirm the top-level `"model"` to a model
    your account can actually use (NOT a friendly alias, NOT an unavailable one). The
    Probity version is pinned (`@nizos/probity@1.8.1`) — keep a pin, and bump the package.json devDependency and the hook fallback TOGETHER.
-2. **`probity.config.ts`** (repo root) ← `harness/templates/probity.config.ts.template`.
+2. **`probity.config.ts`** (repo root) ← `control-plane/templates/probity.config.ts.template`.
    Set the `files` globs to your production tree; keep `enforceTdd()`; set/remove the
    naming bans. (Worked reference: `examples/reference-probity.config.ts`.)
-3. **`.pre-commit-config.yaml`** (repo root) ← `harness/templates/pre-commit-config.yaml.template`.
-   Replace the format/lint/type/test placeholders with your real commands; **keep the
-   `roborev-clean` hook verbatim**; keep `gitleaks` only if installed. (Reference:
-   `examples/reference-.pre-commit-config.yaml`.)
-4. **`.roborev.toml`** (repo root) ← `harness/templates/roborev.toml.template`.
+3. **`.pre-commit-config.yaml`** (repo root) ← `control-plane/templates/pre-commit-config.yaml.template`.
+   Replace the format/lint/type/test placeholders with your real commands; keep
+   `gitleaks` only if installed.
+4. **`.roborev.toml`** (repo root) ← `control-plane/templates/roborev.toml.template`.
    Keep `agent`/`review_agent = "claude-code"`; set `review_model` to a model you
-   have; rewrite `review_guidelines` for your repo. (Reference: `examples/reference-.roborev.toml`.)
+   have; rewrite `review_guidelines` for your repo.
 5. **`.claude/hooks/post-compact-reground.sh`** — edit the `PORTING` block at its top:
    point `PRINCIPLE_DOCS` / `VOCAB_DOC` / `ROUTING_DOC` at your binding docs (leave any
    empty), confirm `SKILL_REL`/`TDD_REL` match where you installed the skills, and set
@@ -235,11 +235,11 @@ bash controlled-build-run-kit/verify/smoke.sh
 ```
 
 It checks prerequisites, that Probity/RoboRev/pre-commit/reground/sweep are wired,
-and that the skill + `cbr.sh` are in place. Fix every `FAIL` before relying on the harness.
+and that the skill + `cbr.sh` are in place. Fix every `FAIL` before relying on the control plane.
 
 ## Step 8 — Verify (live — only a Claude session can do this)
 
-> On a non-Claude-Code harness, this step is also where you confirm the hooks fire at
+> On a non-Claude-Code agent harness, this step is also where you confirm the hooks fire at
 > all — the gates are Claude Code hooks (see "Tool notes"). A green smoke test (Step 7)
 > proves the files are present, NOT that the gate bites; only this step does.
 
@@ -249,9 +249,10 @@ The two checks a shell cannot fake, from inside an interactive Claude session in
 - **prove-YES:** run one real toolchain command and make one throwaway `Write` you then
   delete → both must **SUCCEED** (proves the path isn't over-locked).
 
-Then make a tiny real commit and confirm RoboRev reviews it (`roborev show HEAD`), and
-that a second commit is **blocked** while that review is open (the `roborev-clean` gate).
-If all of that holds, the harness is armed — start a build with the
+Then make a tiny real commit and confirm RoboRev reviews it (`roborev show HEAD`).
+Per-commit reviews are advisory — a second commit is NOT held; the blocking
+review check is the merge-path gate.
+If all of that holds, the control plane is armed — start a build with the
 `controlled-build-run` skill (read its `SKILL.md`).
 
 ---

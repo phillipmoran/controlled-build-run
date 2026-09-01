@@ -1,9 +1,9 @@
 # cbr-core — the provider-neutral CBR law
 
-This folder holds the harness-agnostic core of the Controlled Build Run
+This folder holds the agent-harness-agnostic core of the Controlled Build Run
 process: the laws, the check table, the strand discipline, the build loop, the
 review lifecycle, and the run modes — with every provider mechanism removed to
-the per-harness leaf/adapter files. Core files are copied verbatim into each
+the per-agent-harness leaf/adapter files. Core files are copied verbatim into each
 leaf and hash-gated there; nothing in this folder may name a specific
 provider's tools, flags, or file paths (enforced by the neutrality lint in
 `scripts/`, wired into pre-commit).
@@ -15,9 +15,7 @@ Contents land per the `cbr/core-extract` plan:
 - `build-loop.md` — the watched-fail TDD cycle and review lifecycle
 - `reviews.md` — checkpoint taxonomy, plan-review gate, golden samples
 - `judgment.md` — triage → panel → ratify (policy only)
-- `modes/` — solo, fleet, captain
-- `acceptance/` — neutral acceptance rows, scenarios, mutation list
-- `COVERAGE.md` — every source section mapped to its destination
+- `modes/` — solo, fleet
 - `scripts/` — the shared, provider-neutral MECHANISMS the law describes,
   called by every leaf so one behaviour cannot exist in two drifting copies.
   Currently `strand-lib.sh` (the strand death ritual: archive the strand's

@@ -22,7 +22,7 @@
      owned + verify command — then stop; the implementation is the builder's. No
      unresolved design fork starts here — resolve it or park it in "Open with the operator". -->
 
-- [ ] P0 — harness operability probe (prove-NO blocked / prove-YES ok)
+- [ ] P0 — control-plane operability probe (prove-NO blocked / prove-YES ok)
 - [ ] P1 — <first watched-fail TDD cycle>
 - [ ] ...
 
@@ -33,7 +33,7 @@
 ## Status file
 
 Update `<worktree>/STATUS.md` (build name, phase, state, blocked-on) on every
-phase transition — the captain and the cockpit watch that file, not this plan.
+phase transition — the orchestrator and the cockpit watch that file, not this plan.
 
 ## Open with the operator
 
@@ -43,4 +43,4 @@ phase transition — the captain and the cockpit watch that file, not this plan.
 ## Decision log (in-flight)
 
 | When | Decision | Why |
-|------|----------|-----|
+| ---- | -------- | --- |

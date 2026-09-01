@@ -9,8 +9,8 @@ which can run when.
 
 **Stream** = one node in the dependency graph: a single unit of parallel
 work (one function, one view, one slice), built in its own strand. Stream
-and strand are two views of the same 1:1 thing — *stream* is its role in
-the graph (what it depends on, what it unblocks), *strand* is its isolation
+and strand are two views of the same 1:1 thing — _stream_ is its role in
+the graph (what it depends on, what it unblocks), _strand_ is its isolation
 (its branch, worktree, session, plan). The plan each stream is built from is
 its **stream plan**; the orchestrator's own plan is the **fleet plan**.
 
@@ -19,7 +19,7 @@ its **stream plan**; the orchestrator's own plan is the **fleet plan**.
 It runs from its OWN worktree on its OWN branch — an **integration branch,
 never main** — with its own `task_plan.md` (the fleet plan) marked
 `**Run type:** orchestrator` at the top. Two reasons: (1) it keeps the batch
-off main, so a *second* orchestration batch can run later without colliding;
+off main, so a _second_ orchestration batch can run later without colliding;
 (2) the re-ground hook reads `task_plan.md`, so the orchestrator's live
 state — the graph below — survives its own compaction. Set it up with the
 same strand steps (the leaf's provision command). The orchestrator writes no
@@ -30,8 +30,8 @@ regardless; it does not branch on the marker.)
 
 **Builders merge into the integration branch, not main.** Cut each stream's
 branch FROM the integration branch so it inherits every gate the branch
-carries (the gate-inheritance law below). A finished, reviewed stream merges
-back into integration. **Main gets ONE merge at the end of the epic, with
+carries (the gate-inheritance law below). A finished, reviewed stream is merged
+back into integration by the integration branch's occupant, after GO. **Main gets ONE merge at the end of the epic, with
 the human's sign-off** — never a per-stream push to main. That epic merge
 sits outside the branches a leaf's per-commit review hook watches on some
 installs, so it is reviewed like everything else BY EXPLICIT ORDER: enqueue
@@ -39,19 +39,12 @@ the merge commit's review yourself and confirm it completed before calling
 the epic closed (a downstream deployment found both of its epic merges
 silently unreviewed, 2026-08-26).
 
-And it is the BUILDER that performs its own merge into integration, once GO
-comes back through the file channel — the merge only; the closeout command
-stays yours, because it reaps the worktree the builder is sitting in. One
-standing exception, from `build-loop.md` step 9's occupancy rule: if YOUR
-checkout sits on the integration branch — the common fleet topology — git
-makes the builder's merge impossible, and the merge transfers to you with a
-handoff note; either expect that every time, or park your checkout off the
-integration branch so the builder's GO-merge stays satisfiable. Granting GO is permission, not the merge; an
-orchestrator that answers GO and then merges too is racing its own builder,
-which happened twice on 2026-08-19 and was harmless only by luck. Take the
-merge over only when the builder is PROVEN dead — no live session and no
-live process rooted in its worktree — and record that you did.
-`build-loop.md` step 9 carries the rule and the reasoning.
+**Who merges — one rule (build-loop.md step 9): the integration-branch
+occupant merges after GO; the human owns merges to main.** In the common
+fleet topology that occupant is the orchestrator, whose checkout sits on the
+integration branch for the whole epic. GO is permission; the merge is the
+occupant's act. The closeout command stays with the orchestrator either way,
+because it reaps the worktree the builder is sitting in.
 
 ## The live post-merge smoke is a MANDATORY merge-gate step
 
@@ -101,7 +94,7 @@ When the fleet's work will change pre-existing code — refactors, or features
 landing in modules that already exist — the orchestrator runs a **depth
 scan** twice: once at plan formation (its findings shape the stream
 assignments) and again at each phase boundary, over that phase's merged
-diff. Skip it when a plan or phase touches no modules (docs, harness
+diff. Skip it when a plan or phase touches no modules (docs, control-plane
 config, isolated greenfield code) — a scan with nothing to find invents
 findings.
 
@@ -128,10 +121,10 @@ pass-through shims.
 In the orchestrator's `task_plan.md`, a stream table is the source of truth
 for what may run when:
 
-| Stream | Scope | Branch | Depends on (merged first) | Files it owns | Status |
-|--------|-------|--------|---------------------------|---------------|--------|
-| s0-time | V4 wire+render | stream/views-s0-time | — | the wire envelope, the label sites | pending |
-| s1-rail | V1 | stream/views-s1-rail | s0-time | the timeline component | pending |
+| Stream  | Scope          | Branch               | Depends on (merged first) | Files it owns                      | Status  |
+| ------- | -------------- | -------------------- | ------------------------- | ---------------------------------- | ------- |
+| s0-time | V4 wire+render | stream/views-s0-time | —                         | the wire envelope, the label sites | pending |
+| s1-rail | V1             | stream/views-s1-rail | s0-time                   | the timeline component             | pending |
 
 Two kinds of edge go in **"Depends on":**
 
@@ -155,7 +148,8 @@ run back up from files, not memory.
 
 **Every stream plan passes the plan-review gate BEFORE its builder
 launches** — the gate, the panel rule, the fleet-level review, and the
-2-round cap are in `reviews.md`, with the exempt-zone law.
+round cap (3 TOTAL; law in `build-loop.md`, surface rule in `reviews.md`)
+are there, with the exempt-zone law.
 
 **Log every resolved decision in `findings.md`.** When a panel (or the
 human) resolves a fork, write it to that stream's `findings.md`: the
@@ -180,16 +174,16 @@ supervisor-parented background session that survives the orchestrator), and
 **watched from outside** (ground-truth liveness; silence = alarm).
 
 The deterministic mechanics are bundled as the leaf's **companion script**,
-one obvious subcommand per moment of the build lifecycle: *arm* (scaffold
-the harness once per repo, create-if-absent never clobber, ending with the
-operability probe — guarded ≠ operable), *doctor* (the standard pre-flight
+one obvious subcommand per moment of the build lifecycle: _arm_ (install the
+control plane once per repo, create-if-absent never clobber, ending with the
+operability probe — guarded ≠ operable), _doctor_ (the standard pre-flight
 before EVERY build: read-only PASS/FAIL on every piece, including the one
 silent killer static checks miss — an expired auth token, caught only by a
-real agent round-trip), *provision* (worktree + gitignored deps + the
-armed-checks), *launch* (the detached dispatch + supervisor-registration
+real agent round-trip), _provision_ (worktree + gitignored deps + the
+armed-checks), _launch_ (the detached dispatch + supervisor-registration
 check, surfacing the model/effort before it spends a token, ending with a
-REQUIRED watch-arm directive), *watch* (the fire-once trap on the builder's
-progress), *status* (one-shot outside-view liveness), *fleet* (the whole
+REQUIRED watch-arm directive), _watch_ (the fire-once trap on the builder's
+progress), _status_ (one-shot outside-view liveness), _fleet_ (the whole
 board, role-aware). Each subcommand follows one law — **gather facts, run
 the fixed sequence, decide nothing**: it fails closed on a hard fact, never
 auto-merges/relaunches/kills, and never prints a health verdict (you read
@@ -252,9 +246,42 @@ documentation.
     stop it, reset its worktree to the last good commit, close its reviews
     with a reason, relaunch, and audit that nothing it authored survives.
 
+- **Stop-before-DONE — a builder may not go quiet with its plan open and no
+  terminal marker.** From outside the worktree, "the session stopped" is the
+  only fact available, and it means two opposite things: the work is finished,
+  or the builder died mid-phase. Nothing in the transcript settles it, because
+  the watcher does not read transcripts. So the control plane makes the builder leave
+  a durable fact behind before it is allowed to stop — the completion latch,
+  the operator park file, or a control-plane-broken marker (`CONTROL-PLANE-BROKEN.marker`) — and refuses the stop
+  until one exists. It cannot refuse forever: a gate that re-refuses a session
+  already blocking on it is an infinite loop, so the refusal holds once and a
+  stop taken past it is RECORDED instead — an observable fact in the worktree
+  that the watchers latch. Every release the gate honours must be a fact some
+  watcher reads, or the handoff it authorises reaches nobody and surfaces
+  later as an unexplained stall. The latch must be COMMITTED, because it claims the work is
+  finished and is read from the repository after the worktree is gone; the
+  other two need only exist, because they are read off the filesystem by the
+  same watcher that polls the ask channel, and a control plane broken enough to fail
+  its own commit gates must still be able to hand the strand to a human. A plan checked off in the working tree does not count: the
+  checkboxes are the builder's own account of itself, and the whole reason the
+  gate exists is that account being unavailable to whoever has to decide
+  whether the strand can be reaped. Two shapes make this a gate rather than a
+  wish. Its notion of an "open phase" tracks the identifiers plans actually
+  use rather than a convenient subset — a pattern that silently fails to
+  recognize a phase line is the gate retiring itself without saying so, which
+  is the one failure mode a gate may never have. It is decided ONCE, in one
+  predicate, and each provider's stop hook is
+  I/O translation over it — the leaves differ in payload shape and in what they
+  told the operator to name the park file, and a rule copied into both is a
+  rule that will only ever be fixed in one. And it fails OPEN if that predicate
+  is unreachable, which is the deliberate exception to fail-closed-on-
+  enforcement: every release this gate honours is read BY the predicate, so
+  failing closed without it would refuse the stop and refuse every way out of
+  it in the same breath, and an unescapable session is worse than the drift.
+
 - **Gate inheritance — a builder branch must CONTAIN every tracked gate.**
-  The deterministic gates that live in *tracked* files only bite on a branch
-  that *contains* them. A branch forked before a gate was added runs the old
+  The deterministic gates that live in _tracked_ files only bite on a branch
+  that _contains_ them. A branch forked before a gate was added runs the old
   honor system even though its hook files are armed — the wall isn't in its
   tree. So: cut each builder branch from its base per this mode's branching
   rule — in a fleet, from the current integration branch (which is itself
@@ -291,7 +318,7 @@ documentation.
 ## Watching from outside
 
 The orchestrator monitors against this process's own checklist, from
-outside: did the readback land and match the plan, did the harness probe
+outside: did the readback land and match the plan, did the control-plane probe
 run, does every commit ride a watched-fail test, are the phase-checkpoint
 stamps current, are review findings closed
 (the git log, the plan's checkboxes, the review daemon's list). Vision-shaped
@@ -341,13 +368,13 @@ break the instant it appears. NEVER a fixed countdown (it outlives the
 event), and NEVER gate the exit on another session's reported state (it can
 stay falsely working, so the watch hangs on the very bug it should catch).
 (To tell a genuinely hung session from one merely parked at a clean end of
-turn, see the parked-vs-wedged discriminator in `modes/captain.md`.)
+turn, see the parked-vs-wedged discriminator below.)
 
 **The orchestrator keeps no state that lives only in its context.** The
 streams ledger row records what was dispatched (branch, worktree, status);
 the worktree's `task_plan.md` is the builder's own state; commits and the
 review daemon are the audit trail. An orchestrator that gets compacted
-re-derives everything from those — and the builder survives its *own*
+re-derives everything from those — and the builder survives its _own_
 compactions via the re-ground hook. Files carry the run; no context window
 is load-bearing.
 
@@ -361,3 +388,49 @@ the whole payoff of commit-small + plan-in-files. Cap relaunches and guard
 the loop: if a builder dies repeatedly at the SAME phase (a poisoned
 commit, a real blocker), stop relaunching and surface it — a restart storm
 hides the cause.
+
+## Watcher law (folded from the retired captain tier, 2026-08-31)
+
+The captain tier is deleted: one supervising tier suffices, and the
+orchestrator now owns the human seam directly. The tier's watcher law was
+earned by incident and holds unchanged for an orchestrator watching
+builders:
+
+- **Wake for judgment, never for bookkeeping.** The status file plus the
+  commit digest the watcher accumulates is what a wake reads; a
+  full-context wake per commit was the fleet's biggest measured token
+  waste. Every builder maintains a status file as a standard CBR artifact
+  (build name, phase, state, blocked-on) — watch THAT, never transcripts;
+  raw session logs are escape-code soup, read only to diagnose a confirmed
+  death.
+- **A completion marker must name the strand it belongs to, and a watcher
+  must check.** A marker merged onto the base announces a build finished
+  days ago; a watcher latching on it leaves the live builder unwatched.
+  Foreignness must be PROVEN: a marker naming no branch, or a watcher that
+  cannot read its own branch (detached head), counts the marker as its own
+  — a missed latch is loud (the stall fires), a wrongly disarmed completion
+  signal is silent.
+- **One watcher line — silence = alarm.** The watcher must exit on the bad
+  paths too, not just the happy one: wake on ANY blocker file appearing OR
+  when nothing is still working; disambiguate at the wake with the fleet
+  board + commit age. One background watcher, one notification — no
+  persistent pulse loop, no bespoke parser.
+- **Wake-cadence dial.** Three layers tuned apart: per-builder STALL = 15
+  min (a healthy builder is never silent that long); watcher dead-man = 15
+  min (watches the watcher, not the builder); outer heartbeat ~60 min (the
+  backstop for the alarms themselves — don't collapse it into the stall).
+- **Never foreground a blocking watcher.** A foreground sleep-loop wedges
+  the session: the call never returns, the transcript freezes, and it
+  reports working while doing nothing. Always background the watcher.
+- **Parked ≠ wedged, though they look identical** (~0% CPU, frozen
+  transcript, working state). Two cheap tells: process tree — a wedge has a
+  blocking sleep child, a parked session has no children; and the last
+  transcript entry — a wedge's is mid-flight (a tool call awaiting its
+  result), a parked session's is a completed assistant turn. Wedge: kill
+  the watcher subtree (not the session pid), then neuter the watcher to
+  one-shot. Parked: don't kill it — re-poke it (relaunch-from-git) when the
+  work it waited on is ready.
+- **The human's gates are the orchestrator's to surface, never to cross.**
+  Design/mock approval and contract ratification belong to the human. Relay
+  on transitions — a stream merged, a blocker raised, the epic done — not
+  on a clock.

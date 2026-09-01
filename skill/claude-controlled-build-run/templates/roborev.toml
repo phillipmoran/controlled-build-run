@@ -3,6 +3,13 @@ review_agent = "codex"
 review_model = "gpt-5.6-sol"
 review_reasoning = "standard"
 snapshot_dir = ".roborev"
+# Build records get no blocking review, ever: a commit whose subject
+# contains "[records]" is skipped at enqueue (no job created). Convention:
+# records-only commits carry "[records]" in the subject. Deterministic
+# gates still check record files. Docs that SHIP are product: never tag
+# them. (skip_paths/exclude_patterns do NOT do this in roborev v0.67 —
+# verified empirically 2026-08-31.)
+excluded_commit_patterns = ["[records]"]
 review_guidelines = """
 # <REPO NAME> — review guidelines  (EDIT ME: cbr.sh arm installed this skeleton)
 
@@ -11,7 +18,28 @@ engineering principles, the contracts, whatever IS the spec here>.
 
 Cite a specific principle, invariant, or contract type per finding. Vague style
 commentary with no cited rule is not a finding. Severity: load-bearing | minor |
-nitpick. Default to fewer, higher-quality findings.
+nitpick — and severity is IMPACT, not category: what-to-report lists decide only
+WHETHER a finding is reported, never how severe it is. load-bearing: a live
+production path breaks, loses data, or silently lies (a gate that passes what
+it must block). minor: a real gap reachable only outside sanctioned
+inputs/grammar, or a defect that fails loudly. A bypassable guard whose
+sanctioned inputs never exercise the bypass is minor, not load-bearing.
+Fixture pricing: demand a prove-NO fixture only for NEW blocking behavior or a
+changed decision boundary a sanctioned input can actually reach. A tightened
+matcher, an added length/executability check, or any similarly self-evident
+few-line predicate does not earn a fixture demand — and a missing fixture on
+such a change is nitpick, never load-bearing: the missing test is not the
+impact, the reachable bypass is. If you cannot name a sanctioned input that
+crosses the gap, do not report the fixture's absence at all.
+Default to fewer, higher-quality findings.
+
+Do not re-litigate recorded decisions: before flagging, read the plan's locked
+decisions and the findings record — a finding already escalated and recorded as
+declined may be re-raised only by engaging the recorded reasoning, never by
+restating it. A checkpoint STAMP commit — every changed path a record file and
+the diff only stamping the phase table plus its status records — is reviewed
+against exactly that property, nothing more; any other plan/record change gets
+ordinary content review.
 
 Surface (load-bearing):
 - <your repo's cardinal invariants — the things that must never regress>
@@ -23,4 +51,17 @@ Do NOT flag:
 
 Tests default to ZERO inline comments; production comments state rationale
 non-obvious at the site, never narration of the diff.
+
+BLOCKING is for SUBSTANCE: code, tests, and claims that are factually false —
+an enforcement narrower than its stated contract, a guard that does not bite, a
+comment or a record asserting something the tree does not do. Findings about
+PROSE — wording, tone, ordering, headings, two records phrased differently, a
+sentence that could be clearer — are ADVISORY: report them, marked advisory,
+and never as a reason to hold the commit. A false statement in prose is
+substance and still blocks; there the defect is the claim, not the wording.
+
+One finding SURFACE per class, not per instance: every wording or consistency
+finding raised against a record set counts as ONE surface under the fix-round
+cap. Do not re-raise a class already decided as if it were new.
+
 """

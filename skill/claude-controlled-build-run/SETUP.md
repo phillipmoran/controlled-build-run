@@ -1,7 +1,7 @@
 # SETUP — what a CBR-armed repo has, and why
 
 Plain words. A repo is "armed" for controlled build runs when six pieces are
-in place. `scripts/cbr.sh arm <repo>` scaffolds all six and then proves they
+in place. `scripts/cbr.sh arm <repo>` installs all six and then proves they
 bite; `scripts/cbr.sh doctor` health-checks them any time after (run it before
 every overnight build — it is cheap). Arming is a CBR-DISCIPLINE concern only:
 the recorder/cockpit observability side stays ZERO-TOUCH — never add a setup
@@ -34,12 +34,12 @@ requirement there just to make watching easier.
    be bumped together: `package.json` (`@nizos/probity` devDependency) and the
    hook's npx fallback in `.claude/settings.json` (review 268).
 
-3. **RoboRev + the close-every-review gate.** Every commit gets an automatic
+3. **RoboRev, advisory per commit.** Every commit gets an automatic
    AI review (`.roborev.toml` sets the agent/model and the repo's review
-   guidelines). The `roborev-clean` pre-commit hook refuses the next commit
-   while ANY review on the branch is open, queued, or running — so a finding
-   is always handled-and-closed, never silently outrun. Known upstream sharp
-   edges live in `references/upstream-issues.md`.
+   guidelines). Per-commit reviews are ADVISORY (2026-08-31 cadence move):
+   nothing blocks the next commit — the blocking check is the merge-path
+   review gate, which refuses a merge while blocking findings are open.
+   Known upstream sharp edges live in `references/upstream-issues.md`.
 
 4. **The pre-commit test gate.** Typecheck + tests + format + secrets scan run
    on every commit (`.pre-commit-config.yaml`, installed with
@@ -59,11 +59,17 @@ requirement there just to make watching easier.
 
 6. **The CBR conventions.** `task_plan.md` (the plan the re-ground hook
    re-injects, with the exempt-zone declaration and phase checkboxes),
-   `STATUS.md` (build/phase/state/blocked-on — what the captain and cockpit
+   `STATUS.md` (build/phase/state/blocked-on — what the orchestrator and cockpit
    watch), `NEEDS-OPERATOR.md` (human-only decisions, parked not blocking),
    `docs/streams/` (where finished stream records retire), the stream/* push
-   firewall, and `.cbr-watch/` (gitignored watcher state). Templates for all
-   of these are under `templates/`.
+   firewall, and `.cbr-watch/` (gitignored watcher state). The record
+   skeletons are under `templates/` (`task_plan.skeleton.md`,
+   `status.skeleton.md`, `needs-operator.skeleton.md`); the push firewall is
+   written by `cbr.sh arm`, and `.cbr-watch/` is created by the watcher.
+   Each skeleton names the facts it OWNS and links to the file that owns the
+   rest — one fact, one record file (`references/core/build-loop.md`), which
+   the host enforces at commit time rather than by asking a reviewer to
+   notice.
 
 ## Guarded ≠ operable
 

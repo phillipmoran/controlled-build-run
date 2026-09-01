@@ -86,12 +86,12 @@ git -C "$tmp/unmerged" -c user.email=t@t -c user.name=t commit -qm ahead --allow
 # Assertions use a here-string, never `printf ... | grep -q`: under `pipefail`
 # grep -q exits on the first match and the writer dies of SIGPIPE, failing the
 # pipeline on a MATCH — a coin-flip that already misfired once here.
-out="$("$cbr" closeout-pending "$tmp/merged-clean" 2>&1)" \
+out="$("$cbr" janitor "$tmp/merged-clean" 2>&1)" \
   || fail "closeout-pending exited non-zero (it is WARN-only and must not gate): $out"
 grep -q "CLOSEOUT PENDING  $tmp/repo  branch=" <<<"$out" \
   && fail "the primary checkout was flagged as a reap candidate when invoked from a worktree: $out"
 
-out="$("$cbr" closeout-pending "$tmp/repo" 2>&1)" \
+out="$("$cbr" janitor "$tmp/repo" 2>&1)" \
   || fail "closeout-pending exited non-zero (it is WARN-only and must not gate): $out"
 
 grep -q "CLOSEOUT PENDING.*merged-clean" <<<"$out" \

@@ -3,6 +3,13 @@
 set -euo pipefail
 
 root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 1
+# A merge commit imports the strand's plan into the base branch by design —
+# git=main plan=<strand> is the DEFINITION of that moment, not incoherence;
+# the plan/branch pact binds strand commits, and every one of those was
+# checked when it was made. The merge review gate owns the merge boundary.
+if git -C "$root" rev-parse -q --verify MERGE_HEAD >/dev/null || env | grep -qE "^GITHEAD_[0-9a-f]{40}([0-9a-f]{24})?="; then
+  exit 0
+fi
 plan="$root/task_plan.md"
 [ -f "$plan" ] || { echo "plan-coherence: task_plan.md missing" >&2; exit 1; }
 
@@ -42,14 +49,14 @@ text = staged.stdout if staged.returncode == 0 else open(plan, encoding="utf-8")
 stamps = []
 for line in text.splitlines():
     table = re.match(
-        r"^\|\s*(?:P|Phase|Stage)[0-9]+\s*\|\s*([0-9a-f]{7,40}|pending)\s*\|\s*([0-9a-f]{7,40}|pending)\s*\|",
+        r"^\|\s*(?:P|Phase|Stage)[0-9]+\s*\|\s*([0-9a-f]{7,64}|pending)\s*\|\s*([0-9a-f]{7,64}|pending)\s*\|",
         line,
         re.I,
     )
     if table:
         stamps.extend(value for value in table.groups() if value.lower() != "pending")
     elif "end_sha:" in line or "reviewed:" in line:
-        stamps.extend(re.findall(r"\b[0-9a-f]{7,40}\b", line))
+        stamps.extend(re.findall(r"\b[0-9a-f]{7,64}\b", line))
 for sha in stamps:
     result = subprocess.run(
         ["git", "-C", root, "merge-base", "--is-ancestor", sha, "HEAD"],

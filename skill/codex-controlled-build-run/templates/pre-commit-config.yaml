@@ -1,5 +1,10 @@
 # Deterministic facts gate. Replace the placeholder hooks with the repository's real
-# commands. Keep roborev-clean wired exactly once and always_run.
+# commands. Per-commit reviews are advisory (2026-08-31 cadence move): the
+# blocking review check now lives on the merge path, not here.
+# A merge that auto-commits fires ONLY pre-merge-commit — git has NO fallback
+# to the pre-commit hook there — so both types must be installed or every
+# commit-stage gate is silently bypassed on the primary merge path.
+default_install_hook_types: [pre-commit, pre-merge-commit]
 repos:
   - repo: local
     hooks:
@@ -26,9 +31,21 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: roborev-clean
-        name: roborev (no unfinished reviews on this branch)
-        entry: ./.cbr-codex/scripts/roborev-clean-gate.sh
+      # KEEP VERBATIM: the review wall at the merge boundary (per-commit
+      # reviews are advisory); a non-merge commit exits 0 untouched.
+      - id: merge-review-gate
+        name: merge review gate (.cbr-codex/scripts/merge-review-gate.sh)
+        entry: ./.cbr-codex/scripts/merge-review-gate.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # KEEP VERBATIM: one fact, one record. The single-source law is only a
+      # rule until something fails a commit for breaking it; edit
+      # record-ownership.json to name YOUR records, never this hook.
+      - id: record-single-source
+        name: one fact, one record (.cbr-codex/scripts/record-single-source.sh)
+        entry: ./.cbr-codex/scripts/record-single-source.sh
         language: system
         pass_filenames: false
         always_run: true

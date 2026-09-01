@@ -82,6 +82,39 @@ claude_status() {
 out="$(claude_status)"
 grep -q 'verdict=died' <<<"$out" \
   || fail "with no session and no process, status stopped reporting a dead builder: $out"
+# Raw evidence beside every claim: each past status lie was a verdict word
+# hiding a stale input, so the inputs themselves — ages and raw states —
+# must be printed where the reader can see them go stale.
+grep -qE 'EVIDENCE heartbeat=[^ ]+ pid=[^ ]+ transcript=[^ ]+ commit=[^ ]+ marker=[^ ]+' <<<"$out" \
+  || fail "the Claude leaf prints no raw-evidence line (heartbeat/pid/transcript/commit/marker): $out"
+grep -q 'EVIDENCE .*pid=none' <<<"$out" \
+  || fail "evidence line must carry the raw occupancy answer (pid=none here): $out"
+grep -q 'EVIDENCE .*marker=absent' <<<"$out" \
+  || fail "evidence line must carry the raw marker state (absent here): $out"
+grep -qE 'EVIDENCE .*commit=[0-9]+s' <<<"$out" \
+  || fail "evidence line must carry the raw last-commit age in seconds: $out"
+# The marker evidence must read DURABLE content: a committed marker reports
+# committed@sha, and a rewritten-and-staged one must NOT — staging passes an
+# unstaged-diff check while HEAD holds something else entirely.
+echo done > "$cwt/DONE-cbr-livecheck.marker"
+git -C "$cwt" -c user.email=t@t -c user.name=t add -A
+git -C "$cwt" -c user.email=t@t -c user.name=t commit -qm marker
+out="$(claude_status)"
+grep -qE 'EVIDENCE .*marker=committed@[0-9a-f]{7,}' <<<"$out" \
+  || fail "a committed marker must report committed@sha: $out"
+# The identity must come from the SAME pinned revision the durability check
+# read — here, the commit that introduced the marker as of the current tip.
+mk_sha="$(git -C "$cwt" log -1 --format=%h HEAD -- DONE-cbr-livecheck.marker)"
+grep -q "marker=committed@$mk_sha" <<<"$out" \
+  || fail "reported marker sha does not match the pinned revision's marker commit ($mk_sha): $out"
+echo rewritten > "$cwt/DONE-cbr-livecheck.marker"
+git -C "$cwt" add DONE-cbr-livecheck.marker
+out="$(claude_status)"
+grep -q 'EVIDENCE .*marker=uncommitted' <<<"$out" \
+  || fail "a rewritten-and-staged marker was reported as committed — staged content is not durable: $out"
+git -C "$cwt" reset -q --hard
+git -C "$cwt" -c user.email=t@t -c user.name=t rm -q -f DONE-cbr-livecheck.marker
+git -C "$cwt" -c user.email=t@t -c user.name=t commit -qm unmark
 
 # Now something IS rooted in the worktree. The registry still knows nothing, and
 # that combination is the live-interactive-session case.
@@ -98,7 +131,7 @@ grep -qi 'interactive' <<<"$out" \
 kill "$sleeper" 2>/dev/null || true; wait "$sleeper" 2>/dev/null || true; sleeper=""
 
 # ---------------------------------------------------------------------------
-# The Codex leaf — same blind spot, same fix, or the law lives in one harness
+# The Codex leaf — same blind spot, same fix, or the law lives in one agent-harness leaf
 # ---------------------------------------------------------------------------
 xrepo="$tmp/x/repo"; xwt="$tmp/x/wt-livecheck"
 mkdir -p "$tmp/x"
@@ -133,12 +166,16 @@ codex_status() {
 out="$(codex_status)"
 [ "$(cat "$tmp/x.rc")" = "0" ] \
   && fail "with a dead pid, no marker and nothing running, the Codex leaf stopped reporting a hard-dead fact: $out"
+grep -qE 'EVIDENCE heartbeat=[^ ]+ pid=[^ ]+ transcript=[^ ]+ commit=[^ ]+ marker=[^ ]+' <<<"$out" \
+  || fail "the Codex leaf prints no raw-evidence line (heartbeat/pid/transcript/commit/marker): $out"
+grep -qE 'EVIDENCE .*commit=[0-9]+s' <<<"$out" \
+  || fail "the Codex leaf evidence line must carry the raw last-commit age in seconds: $out"
 
 ( cd "$xwt" && exec sleep 600 ) & sleeper=$!
 sleep 1
 out="$(codex_status)"
 grep -qi 'interactive' <<<"$out" \
-  || fail "the Codex leaf did not report the live process rooted in the worktree — the same blind spot, unfixed in the second leaf, is law living in one harness: $out"
+  || fail "the Codex leaf did not report the live process rooted in the worktree — the same blind spot, unfixed in the second leaf, is law living in one agent-harness leaf: $out"
 [ "$(cat "$tmp/x.rc")" = "0" ] \
   || fail "the Codex leaf still exits hard-dead for a strand with a live process rooted in its worktree: $out"
 
@@ -192,10 +229,36 @@ set +e
     "$xrepo/skills/codex-controlled-build-run/scripts/cbr-codex.sh" status livecheck ) >"$tmp/xa.out" 2>&1
 xarc=$?
 set -e
-kill "$sleeper" 2>/dev/null || true; wait "$sleeper" 2>/dev/null || true; sleeper=""
-echo 999999 > "$xrepo/.cbr-codex/runs/livecheck/pid"
 [ "$xarc" -eq 0 ] \
   || fail "the Codex leaf reported a hard-dead fact for a strand whose registered session is RUNNING, because it could not inspect the process table — every poll on such a host is now a false page: $(cat "$tmp/xa.out")"
+
+# Review health is diagnostic, not worker liveness. If RoboRev cannot answer,
+# a proven-live worker must still make both status and fleet succeed; once the
+# worker is genuinely dead, the same unreadable review state must not hide it.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$tmp/nolsof/roborev"
+set +e
+( cd "$xrepo" && PATH="$tmp/nolsof" \
+    "$xrepo/skills/codex-controlled-build-run/scripts/cbr-codex.sh" status livecheck ) >"$tmp/x-review.out" 2>&1
+x_review_rc=$?
+( cd "$xrepo" && PATH="$tmp/nolsof" \
+    "$xrepo/skills/codex-controlled-build-run/scripts/cbr-codex.sh" fleet ) >"$tmp/x-fleet.out" 2>&1
+x_fleet_rc=$?
+set -e
+grep -q 'open reviews.*unreadable' "$tmp/x-review.out" \
+  || fail "status hid the unreadable review service: $(cat "$tmp/x-review.out")"
+[ "$x_review_rc" -eq 0 ] \
+  || fail "status failed even though the registered worker is live: $(cat "$tmp/x-review.out")"
+[ "$x_fleet_rc" -eq 0 ] \
+  || fail "fleet failed even though the registered worker is live: $(cat "$tmp/x-fleet.out")"
+
+kill "$sleeper" 2>/dev/null || true; wait "$sleeper" 2>/dev/null || true; sleeper=""
+echo 999999 > "$xrepo/.cbr-codex/runs/livecheck/pid"
+set +e
+( cd "$xrepo" && PATH="$tmp/nolsof" \
+    "$xrepo/skills/codex-controlled-build-run/scripts/cbr-codex.sh" status livecheck ) >/dev/null 2>&1
+x_dead_rc=$?
+set -e
+[ "$x_dead_rc" -ne 0 ] || fail "an unreadable review service hid a genuinely dead worker"
 
 # ---------------------------------------------------------------------------
 # A DEAD SESSION IS NOT AN IDLE FOLDER
@@ -240,7 +303,9 @@ chmod +x "$tmp/bin/claude"
 # The other half of the harm: a second writer dispatched into a worktree somebody
 # is already working in races on the git index. One writer per worktree, and a
 # rule that evaporates when lsof is missing is not a rule.
-printf 'prompt\n' > "$tmp/prompt.md"
+# The launch marker gate runs before the occupancy checks under test, so the
+# prompt must name each fixture branch's exact marker to reach them.
+printf 'prompt\nCOMMIT DONE-cbr-livecheck.marker\nCOMMIT DONE-cbr-dispatch.marker\n' > "$tmp/prompt.md"
 
 ( cd "$cwt" && exec sleep 600 ) & sleeper=$!
 sleep 1
@@ -335,17 +400,36 @@ grep -qi 'did not emit thread.started' <<<"$out" \
 rm -rf "$xdrun"
 
 # ---------------------------------------------------------------------------
+# A MISSING WORKTREE MUST STILL GET ITS FACTS OUT
+# ---------------------------------------------------------------------------
+# The Codex leaf runs set -e; a fatally-failing evidence probe on the
+# missing-worktree path killed status before it could report the hard-dead
+# facts that path exists to report.
+printf '{"worktree":"%s"}\n' "$tmp/x/wt-reaped-away" > "$xrepo/.cbr-codex/runs/livecheck/meta.json"
+out="$( set +e; ( cd "$xrepo" && PATH="$tmp/bin:$PATH" \
+  "$xrepo/skills/codex-controlled-build-run/scripts/cbr-codex.sh" status livecheck ) 2>&1; set -e )"
+grep -q 'EVIDENCE .*marker=absent' <<<"$out" \
+  || fail "with the worktree gone, the Codex leaf must still print its evidence line (marker=absent), not die mid-status: $out"
+printf '{"worktree":"%s"}\n' "$xwt" > "$xrepo/.cbr-codex/runs/livecheck/meta.json"
+
+# ---------------------------------------------------------------------------
 # WIRING — one implementation of "is anybody working here"
 # ---------------------------------------------------------------------------
 for leaf in "$claude_leaf" "$codex_leaf"; do
   n="$(basename "$leaf")"
-  grep -qE 'cbr_path_has_live_process "' "$leaf" \
-    || fail "$n never CALLS cbr_path_has_live_process with a path — it decides liveness some other way, and a second copy of this rule is how one leaf gets the fix and the other keeps the false verdict"
+  grep -qE 'cbr_worktree_occupancy "' "$leaf" \
+    || fail "$n never asks the shared tri-state occupancy rule (cbr_worktree_occupancy) — it decides liveness some other way, and a second copy of this rule is how one leaf gets the fix and the other keeps the false verdict"
+  # Any mention at all, not just a double-quoted call form: an unquoted or
+  # single-quoted invocation is the same drift through a syntax the narrower
+  # pattern waved past, and a comment steering readers at the raw predicate
+  # is how the next edit re-wires it.
+  grep -qF 'cbr_path_has_live_process' "$leaf" \
+    && fail "$n mentions the raw liveness predicate (cbr_path_has_live_process) — the tri-state front (cbr_worktree_occupancy) is the single occupancy implementation, and any direct use, however quoted, re-opens the duplicated-verdict drift it replaced"
   # A bare grep is also satisfied by a leaf that DEFINES its own copy after
   # sourcing the library, shadowing the shared one while looking wired. That is
   # the same hole the marker-predicate check had, found the same way.
-  grep -qE '^[[:space:]]*cbr_path_has_live_process[[:space:]]*\(\)' "$leaf" \
-    && fail "$n defines its own cbr_path_has_live_process, shadowing the shared predicate — the leaf now carries a private copy of the liveness rule and the shared one is dead code in it"
+  grep -qE '^[[:space:]]*cbr_(path_has_live_process|worktree_occupancy)[[:space:]]*\(\)' "$leaf" \
+    && fail "$n defines its own copy of the shared liveness rule, shadowing the shared predicate — the shared one is dead code in it"
 done
 
 echo "status-interactive.test PASS (both leaves: no session + live process = interactive, not dead)"

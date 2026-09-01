@@ -13,7 +13,7 @@ A question mid-build is not automatically a stop-and-ask. Triage it:
    drift.
 2. **An engineering judgment call.** A real "how should this work" with no
    single right answer — a protocol shape, a payload schema, a data model, a
-   tooling or agent-prompt design — but *inside* the locked scope and
+   tooling or agent-prompt design — but _inside_ the locked scope and
    contracts. **Run a multi-model panel and apply its recommendation**
    (subject to ratify, below).
 3. **A vision or scope call.** A contract edit, a new top-level name, an
@@ -30,7 +30,7 @@ a prior session's priorities, not this question). Frame it as **"How do the
 best [matched experts] solve this successfully today? Do it that way."** —
 match the expert to the question: game-economy / MMO leads for a
 game-mechanic call, top agentic engineers for an agent / tool-call / prompt
-call, senior software leads for a code-discipline call. Anchor on *success*,
+call, senior software leads for a code-discipline call. Anchor on _success_,
 not role: "how is this solved successfully" beats "your role is X" — the
 success-framed prompt gets the better answer (ratified by the human,
 2026-06-21).
@@ -60,12 +60,12 @@ channel. The channel:
    the panel first for a bucket-2 call).
 3. The builder consumes the answer at its next resume/reground, or reads the
    answer file before it would block. The ask file is the light "answer me
-   and I keep going" seam; the needs-human marker and the harness-broken
+   and I keep going" seam; the needs-human marker and the control-plane-broken
    marker stay the terminal blockers.
 
 ## Ratify
 
-A bucket-2 answer is applied directly — *except* when it would change a
-ratified contract, the test harness, or the locked scope. Those still take
+A bucket-2 answer is applied directly — _except_ when it would change a
+ratified contract, the test rig, or the locked scope. Those still take
 the human's yes/no, panel recommendation attached. The panel informs the
 call; it never replaces the human on vision or scope.

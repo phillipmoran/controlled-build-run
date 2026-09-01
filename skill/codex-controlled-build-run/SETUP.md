@@ -18,17 +18,19 @@ blindly.
 
    Use the repository's package manager and lockfile policy instead of `npm`
    when applicable.
-3. Install the sibling teaching skills this leaf's reground hook injects. From
-   the kit root:
+3. Optionally install the sibling teaching skills this leaf's reground hook
+   injects (the complexity ceiling is an optional per-project knob, not core
+   law — install its skill only if your project wires the gate). From the kit
+   root:
 
    ```bash
-   cp -R "$KIT/sibling-skills/cyclomatic-complexity" skills/
+   cp -R "$KIT/sibling-skills/cyclomatic-complexity" skills/   # only if you wire the gate
    ```
 
    The hook resolves each at `.agents/skills/<name>/SKILL.md` first, then
-   `skills/<name>/SKILL.md`, and skips any that is absent — so a port that omits
-   this step still re-grounds, it just re-grounds without the teaching material
-   behind a gate that will still block its commits.
+   `skills/<name>/SKILL.md`, and skips any that is absent — a port that omits
+   this step still re-grounds; in a project that DID wire the gate, it
+   re-grounds without the teaching material behind it.
 
 4. Run `scripts/cbr-codex.sh arm /absolute/repository/path`.
 5. Replace every fail-closed placeholder in `.cbr-codex.json` and
@@ -42,14 +44,14 @@ blindly.
 7. Start RoboRev, run `cbr-codex.sh doctor`, then run the live
    `cbr-codex.sh probe`. A repository is not armed until both pass.
 
-When developing this package inside `the reference host`, run
-`scripts/tests/conformance.py --canonical-source-repo ../cbr-core` from the
+When developing this package inside its upstream source repo, run
+`scripts/tests/conformance.py ../cbr-core` from the
 package root. It
 proves that the embedded core is exact and that provider mechanics stay on the
-correct side of the core/leaf boundary. Installed copies can run it without an
-argument to validate their self-contained snapshot. Do not pass
-`--canonical-source-repo` in a port: that mode intentionally requires the
-historical source object in this repository.
+correct side of the core/leaf boundary. An installed copy run without an
+argument validates its internal contracts; byte-exactness of its snapshot is
+only provable against a canonical core — pass that path explicitly when one
+is available.
 
 ## Before an unattended builder
 
@@ -59,7 +61,7 @@ historical source object in this repository.
 - Run the full live pre-commit gate in the worktree.
 - Launch only after the model, sandbox, approval policy, hook hash, provision
   record, plan identity, dependencies, and ownership facts are visible.
-- Immediately arm both watcher and watchdog commands printed by `launch`.
+- Immediately arm the watcher command printed by `launch`.
 
 See `references/porting.md` for every project knob and
 `references/acceptance.md` for the smoke contract.

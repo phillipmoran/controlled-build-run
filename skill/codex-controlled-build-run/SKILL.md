@@ -5,52 +5,48 @@ description: >-
   Probity watched-fail TDD, deterministic pre-commit checks, RoboRev review,
   role-aware post-compaction reinjection, isolated worktree strands, and
   persistent fleet supervision. Use for non-trivial builds, long or autonomous
-  runs, harness setup or smoke testing, compaction recovery, and orchestrated
+  runs, control-plane setup or smoke testing, compaction recovery, and orchestrated
   multi-worktree development.
 ---
 
 # Codex Controlled Build Run
 
-Treat this file as the Codex provider router. The complete process law lives in
-the byte-exact shared-core snapshot under `references/cbr-core/`; Codex-specific
-mechanics live in this leaf's references, scripts, and templates. Never replace
-the routed law with a summary from memory.
+Treat this file as the Codex provider router. Set `CBR_CORE` to the repository's
+`skills/cbr-core/` directory when it exists; otherwise use this leaf's
+`references/cbr-core/` snapshot. Codex-specific mechanics live in this leaf's
+references, scripts, and templates. Never replace the routed law with a summary
+from memory.
 
 ## Route the law before acting
 
 Read these shared files for every controlled build, in order:
 
-1. `references/cbr-core/policy.md`
-2. `references/cbr-core/strand.md`
-3. `references/cbr-core/reviews.md`
-4. `references/cbr-core/judgment.md`
-5. `references/cbr-core/GLOSSARY.md` (the harness's own words; use them exactly)
+1. `$CBR_CORE/policy.md`
+2. `$CBR_CORE/strand.md`
+3. `$CBR_CORE/reviews.md`
+4. `$CBR_CORE/judgment.md`
+5. `$CBR_CORE/GLOSSARY.md` (the control plane's own words; use them exactly)
 
 Then select the current role from the active `task_plan.md` and branch:
 
-- **Workstream/builder:** read `references/cbr-core/build-loop.md` and
+- **Workstream/builder:** read `$CBR_CORE/build-loop.md` and
   `references/build-loop.md`. When this is a solo strand rather than a
-  `stream/*` fleet builder, also read `references/cbr-core/modes/solo.md`.
-  Do not load fleet or captain mode into a workstream.
-- **Orchestrator:** read `references/cbr-core/modes/fleet.md` and
-  `references/fleet.md`. Do not load the builder TDD loop or solo/captain mode
-  into an orchestrator reinjection payload.
-- **Captain:** read `references/cbr-core/modes/captain.md` and the role/mechanism
-  sections of `references/fleet.md`. A captain watches and relays; it does not
-  build or merge.
+  `stream/*` fleet builder, also read `$CBR_CORE/modes/solo.md`.
+  Do not load fleet mode into a workstream.
+- **Orchestrator:** read `$CBR_CORE/modes/fleet.md` and
+  `references/fleet.md` (fleet.md's watcher-law section carries the retired
+  captain tier's folded duties). Do not load the builder TDD loop or solo
+  mode into an orchestrator reinjection payload.
 
-For harness setup or repair, read `references/harness.md` completely before
+For control-plane setup or repair, read `references/agent-harness.md` completely before
 changing a hook or config. For portability decisions, read
 `references/porting.md`. For panel mechanics, read
-`references/panel-review.md`. For acceptance, combine
-`references/cbr-core/acceptance/checklist.md`,
-`references/cbr-core/acceptance/scenarios.md`, and
-`references/cbr-core/acceptance/mutations.md` with the Codex mechanical rows in
-`references/acceptance.md`. `references/conformance.md` defines how the copy and
-provider boundary are enforced; `references/CODEX-COVERAGE.md` proves that the
-former long Codex router's provider mechanics all have surviving destinations.
+`references/panel-review.md`. Acceptance is the conformance/smoke/mutation
+suite (`scripts/tests/`) plus the Codex mechanical rows in
+`references/acceptance.md`. `references/conformance.md` defines how the copy
+and provider boundary are enforced.
 
-## Use the Codex harness exactly
+## Use the Codex agent harness exactly
 
 Use two hook systems:
 
@@ -81,7 +77,7 @@ Use persisted `codex exec --json` sessions for detached builders. Launch with:
 - `approval_policy="never"` so a headless run cannot wait on a prompt;
 - explicit worktree, model, and reasoning values from `.cbr-codex.json`;
 - no ephemeral mode;
-- the hook-trust bypass only after the harness independently verifies the exact
+- the hook-trust bypass only after the control plane independently verifies the exact
   trusted hook hash.
 
 Keep the selected model's threshold in `.codex/config.toml` under
@@ -92,13 +88,13 @@ and MUST be clamped for a smaller model. The re-ground hook remains mandatory.
 
 Run the companion script from this skill directory:
 
-- `scripts/cbr-codex.sh arm <repo>` — create missing harness pieces without
+- `scripts/cbr-codex.sh arm <repo>` — create missing control-plane pieces without
   clobbering richer existing files, then stop for hook review/trust.
-- `scripts/cbr-codex.sh doctor [repo]` — prove every harness fact before each
+- `scripts/cbr-codex.sh doctor [repo]` — prove every control-plane fact before each
   build.
 - `scripts/cbr-codex.sh probe [repo]` — run the live blocked/allowed write probe.
 
-Do not declare the harness armed from static configuration alone. Confirm the
+Do not declare the control plane armed from static configuration alone. Confirm the
 branch equals the plan, the session root is the worktree, dependencies work,
 Probity blocks an untested guarded write, and an allowed scratch write succeeds.
 
@@ -110,12 +106,14 @@ plan checkbox in the same commit as its work. Commit small and often.
 
 For each behavior: run a green baseline, add one relevant failing test, observe
 the intended red, implement the minimum green change, run focused and repository
-gates, update the plan, commit, and handle the review. Respond to and close every
-RoboRev finding before the next commit. Re-run crashed reviews; after about two
-finding/fix rounds or five infrastructure crashes, escalate instead of looping.
+gates, update the plan, and commit. Per-commit reviews are advisory
+(2026-08-31 cadence): read a FAIL when it lands, but respond+close every open
+job at the PR boundary, where the merge review gate collects the homework.
+Re-run crashed reviews; after three review-fix commits TOTAL in the merge range or five
+infrastructure crashes, escalate instead of looping.
 
 At each plan phase boundary, run the independent contradiction review from
-`references/cbr-core/reviews.md`, then stamp the exact reviewed SHA. Render and
+`$CBR_CORE/reviews.md`, then stamp the exact reviewed SHA. Render and
 inspect a realistic golden sample whenever a human or model reads the output.
 
 ## Run a fleet through the fixed rail
@@ -128,13 +126,13 @@ Use only these lifecycle commands for fleet mechanics:
 
 - `scripts/cbr-codex.sh provision <slug> <branch>`
 - `scripts/cbr-codex.sh launch <slug> --prompt-file <file>`
-- `scripts/cbr-codex.sh watch <slug>` and `--watchdog`
+- `scripts/cbr-codex.sh watch <slug>`
 - `scripts/cbr-codex.sh status <slug>` and `fleet`
 - `scripts/cbr-codex.sh resume <slug> --prompt-file <file>`
 - `scripts/cbr-codex.sh closeout <slug> [--into <branch>]`
 - `scripts/cbr-codex.sh janitor`
 
-Run `watch` and its watchdog immediately after launch. Durable run facts live
+Run `watch` immediately after launch. Durable run facts live
 under `.cbr-codex/runs/<slug>/`; the not-yet-watched latch and watcher state live
 under `.cbr-codex/watch/`. Weigh process state with JSONL/commit age. Silence is
 an alarm. Scripts gather facts and run fixed sequences; they never decide to
@@ -144,7 +142,7 @@ merge, push, relaunch, kill, or declare health.
 
 The re-ground hook injects the binding project docs, this router, the shared
 common law, exactly one role payload, the active plan, findings, and progress.
-It states that boot and harness setup already happened. Continue from the next
+It states that boot and control-plane setup already happened. Continue from the next
 unchecked plan item immediately; do not perform a recovery-time file-reading
 ritual or switch to a newer handoff. Task-specific source inspection after
 resumption remains normal work.

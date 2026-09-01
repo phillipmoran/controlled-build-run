@@ -1,132 +1,101 @@
-# Task Plan: [Brief Description]
-<!-- 
-  WHAT: This is your roadmap for the entire task. Think of it as your "working memory on disk."
-  WHY: After 50+ tool calls, your original goals can get forgotten. This file keeps them fresh.
-  WHEN: Create this FIRST, before starting any work. Update after each phase completes.
+# [Name] — contract
+<!--
+  WHAT: The plan is a CONTRACT, not a script — it fixes decisions and the
+  acceptance bar, and leaves implementation to the build loop.
+  WHY: After 50+ tool calls (or a compaction), this file IS your memory.
+  WHEN: Create FIRST. Update the ledger and decision log as you go.
 -->
+
+**Run type:** workstream
+<!--
+  This template shapes a WORKSTREAM (one builder, one strand). An
+  orchestrator run carries the full fleet lifecycle — dependency/collision
+  graph, merged-build smoke, cleanup — which this skeleton does not:
+  write fleet plans to the contract in skills/cbr-core/modes/fleet.md.
+-->
+**Branch:** [branch]
+<!-- Confirm the live branch matches this line at every session start. -->
 
 ## Goal
-<!-- 
-  WHAT: One clear sentence describing what you're trying to achieve.
-  WHY: This is your north star. Re-reading this keeps you focused on the end state.
-  EXAMPLE: "Create a Python CLI todo app with add, list, and delete functionality."
--->
-[One sentence describing the end state]
+<!-- One paragraph: what EXISTS when this is done, stated observably. -->
+[What exists when this is done]
 
-## Current Phase
-<!-- 
-  WHAT: Which phase you're currently working on (e.g., "Phase 1", "Phase 3").
-  WHY: Quick reference for where you are in the task. Update this as you progress.
+## Invariants
+<!--
+  WHAT: Rules that must stay true for the whole run — the "don't break
+  these" list (contracts, gates, conventions this work must respect).
+  WHY: A reviewer cites these by name; a builder checks against them.
 -->
-Phase 1
+- [Invariant]
 
-## Phases
-<!-- 
-  WHAT: Break your task into 3-7 logical phases. Each phase should be completable.
-  WHY: Breaking work into phases prevents overwhelm and makes progress visible.
-  WHEN: Update status after completing each phase: pending → in_progress → complete
+## Out of scope
+<!--
+  WHAT: What this plan deliberately does NOT touch.
+  WHY: The cheapest way to kill scope drift and review re-litigation.
 -->
+- [Not this]
 
-### Phase 1: Requirements & Discovery
-<!-- 
-  WHAT: Understand what needs to be done and gather initial information.
-  WHY: Starting without understanding leads to wasted effort. This phase prevents that.
+## Locked decisions
+<!--
+  WHAT: Settled calls, each with a one-line why.
+  WHY: Reviews may engage the recorded reasoning — never reopen a locked
+  decision by restating it. Findings may not edit this section.
 -->
-- [ ] Understand user intent
-- [ ] Identify constraints and requirements
-- [ ] Document findings in findings.md
-- **Status:** in_progress
-<!-- 
-  STATUS VALUES:
-  - pending: Not started yet
-  - in_progress: Currently working on this
-  - complete: Finished this phase
--->
+| Decision | Why |
+|----------|-----|
+|          |     |
 
-### Phase 2: Planning & Structure
-<!-- 
-  WHAT: Decide how you'll approach the problem and what structure you'll use.
-  WHY: Good planning prevents rework. Document decisions so you remember why you chose them.
+## PRs
+<!--
+  SIZING RULE: one PR = one behavior, ~≤400 lines of product diff, green,
+  revertable. A step too big to fit gets split HERE, at planning time —
+  not discovered mid-build. Every PR carries the five plan-altitude fields
+  (strand.md): outcome, watched-fail test, locked decisions, owned files,
+  verification command — then stops.
 -->
-- [ ] Define technical approach
-- [ ] Create project structure if needed
-- [ ] Document decisions with rationale
-- **Status:** pending
+- [ ] P1 — [one behavior]
+  - outcome: [what is observable when this lands]
+  - watched-fail: [the test written first, seen red]
+  - locked: [decisions already made for this step, or "see Locked decisions"]
+  - owns: [files/dirs this PR may touch — collision boundary]
+  - verify: `[command]`
 
-### Phase 3: Implementation
-<!-- 
-  WHAT: Actually build/create/write the solution.
-  WHY: This is where the work happens. Break into smaller sub-tasks if needed.
+## PR ledger
+<!--
+  WHAT: One row per finished PR: where it ended, what reviewed it, how
+  every finding was dispositioned.
+  WHY: The audit trail the merge gate and the human read. The gate's
+  checkpoint check requires columns 2 and 3 to hold the SAME sha once a
+  PR completes: `reviewed` is the end sha again, written only after the
+  checkpoint review ran at that tip. Review jobs and finding outcomes go
+  in `disposition`.
 -->
-- [ ] Execute the plan step by step
-- [ ] Write code to files before executing
-- [ ] Test incrementally
-- **Status:** pending
+| PR | end sha | reviewed | disposition |
+|----|---------|----------|-------------|
+| P1 | pending | pending  |             |
 
-### Phase 4: Testing & Verification
-<!-- 
-  WHAT: Verify everything works and meets requirements.
-  WHY: Catching issues early saves time. Document test results in progress.md.
+## Acceptance
+<!--
+  WHAT: The exact commands that prove the whole contract is done.
+  WHY: "Done" is a command output, not a feeling.
 -->
-- [ ] Verify all requirements met
-- [ ] Document test results in progress.md
-- [ ] Fix any issues found
-- **Status:** pending
+```
+[verification command(s)]
+```
 
-### Phase 5: Delivery
-<!-- 
-  WHAT: Final review and handoff to user.
-  WHY: Ensures nothing is forgotten and deliverables are complete.
+## Open with the human
+<!--
+  WHAT: Design forks only the human may resolve. A builder never starts
+  on an unresolved fork.
 -->
-- [ ] Review all output files
-- [ ] Ensure deliverables are complete
-- [ ] Deliver to user
-- **Status:** pending
+- [Question]
 
-## Key Questions
-<!-- 
-  WHAT: Important questions you need to answer during the task.
-  WHY: These guide your research and decision-making. Answer them as you go.
-  EXAMPLE: 
-    1. Should tasks persist between sessions? (Yes - need file storage)
-    2. What format for storing tasks? (JSON file)
+## Decision log (in-flight)
+<!--
+  WHAT: Rulings made DURING the run — dated, with whys. Includes declined
+  review findings with their recorded reasoning.
+  WHY: A declined finding without a written why gets re-litigated forever.
 -->
-1. [Question to answer]
-2. [Question to answer]
-
-## Decisions Made
-<!-- 
-  WHAT: Technical and design decisions you've made, with the reasoning behind them.
-  WHY: You'll forget why you made choices. This table helps you remember and justify decisions.
-  WHEN: Update whenever you make a significant choice (technology, approach, structure).
-  EXAMPLE:
-    | Use JSON for storage | Simple, human-readable, built-in Python support |
--->
-| Decision | Rationale |
-|----------|-----------|
-|          |           |
-
-## Errors Encountered
-<!-- 
-  WHAT: Every error you encounter, what attempt number it was, and how you resolved it.
-  WHY: Logging errors prevents repeating the same mistakes. This is critical for learning.
-  WHEN: Add immediately when an error occurs, even if you fix it quickly.
-  EXAMPLE:
-    | FileNotFoundError | 1 | Check if file exists, create empty list if not |
-    | JSONDecodeError | 2 | Handle empty file case explicitly |
--->
-| Error | Attempt | Resolution |
-|-------|---------|------------|
-|       | 1       |            |
-
-## Notes
-<!-- 
-  REMINDERS:
-  - Update phase status as you progress: pending → in_progress → complete
-  - Re-read this plan before major decisions (attention manipulation)
-  - Log ALL errors - they help avoid repetition
-  - Never repeat a failed action - mutate your approach instead
--->
-- Update phase status as you progress: pending → in_progress → complete
-- Re-read this plan before major decisions (attention manipulation)
-- Log ALL errors - they help avoid repetition
+| When | Decision | Why |
+|------|----------|-----|
+|      |          |     |

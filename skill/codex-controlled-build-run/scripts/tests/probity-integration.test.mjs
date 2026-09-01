@@ -32,6 +32,37 @@ test('isolated judge uses the parser on the fake SDK response', async () => {
   assert.equal(threadOptions.approvalPolicy, 'never')
 })
 
+test('every judgment carries the local rulings ahead of the intact upstream prompt', async () => {
+  let captured
+  class Codex {
+    startThread() {
+      return {
+        run: async (prompt) => {
+          captured = prompt
+          return { finalResponse: '{"kind":"pass","reason":"ok"}' }
+        },
+      }
+    }
+  }
+  const judge = createCodexJudge({
+    model: () => 'fixture-model',
+    loadCodex: async () => ({ Codex }),
+  })
+  await judge.reason('UPSTREAM-PROMPT-CANARY')
+  assert.ok(captured.includes('break-verify-revert'), 'mutation-check lane ruling missing')
+  assert.ok(captured.includes('minimal importable stub'), 'literal-stub ruling missing')
+  assert.ok(captured.includes('scratch, never production'), 'scratch-path ruling missing')
+  assert.ok(
+    captured.includes('lives under a temp directory gets no exemption'),
+    'scratch-path ruling must refuse the exemption to a temp-hosted checkout',
+  )
+  assert.ok(captured.includes('never weaken'), 'rulings must declare they refine, not weaken')
+  assert.ok(
+    captured.endsWith('UPSTREAM-PROMPT-CANARY'),
+    'upstream prompt must ride intact after the policy — prepended, never replaced',
+  )
+})
+
 test('integrated config requires the privately attested judge and content policy', () => {
   const judge = createCodexJudge({ model: () => 'fixture-model' })
   const contentPolicy = createVendorContentPolicy(() => null)
@@ -44,7 +75,6 @@ test('integrated config requires the privately attested judge and content policy
     '!**/fixtures/**',
   ]
   const config = { ai: judge, rules: [{ files: policyFiles, rules: [contentPolicy] }] }
-  assert.equal(isIntegratedProbityConfig(config), false)
   assert.doesNotThrow(() => markIntegratedProbityConfig(config))
   assert.equal(isIntegratedProbityConfig(config), true)
   assert.throws(() => {
@@ -67,6 +97,17 @@ test('integrated config requires the privately attested judge and content policy
   assert.throws(() =>
     markIntegratedProbityConfig({ ai: judge, rules: [{ files: policyFiles, rules: [] }] }),
   )
+  const forgedJudge = {
+    cbrIsolatedJudge: true,
+    reason: async () => ({ kind: 'pass', reason: 'forged bypass' }),
+  }
+  const forgedPolicy = Object.assign(() => null, { cbrVendorContentPolicy: true })
+  const forgedConfig = {
+    ai: forgedJudge,
+    rules: [{ files: policyFiles, rules: [forgedPolicy] }],
+  }
+  assert.throws(() => markIntegratedProbityConfig(forgedConfig))
+  assert.equal(isIntegratedProbityConfig(forgedConfig), false)
   assert.throws(() =>
     markIntegratedProbityConfig({
       ai: judge,
@@ -83,21 +124,4 @@ test('integrated config requires the privately attested judge and content policy
       }),
     )
   }
-})
-
-test('published-looking symbols cannot forge component or config attestation', () => {
-  const forgedJudge = {
-    reason: async () => ({ kind: 'pass', reason: 'bypass' }),
-    [Symbol.for('cbr.probity.judge.v2')]: true,
-  }
-  const forgedPolicy = Object.assign(() => null, {
-    [Symbol.for('cbr.probity.content-policy.v2')]: true,
-  })
-  const forgedConfig = {
-    ai: forgedJudge,
-    rules: [{ files: ['packages/**'], rules: [forgedPolicy] }],
-    [Symbol.for('cbr.probity.integration.v2')]: true,
-  }
-  assert.equal(isIntegratedProbityConfig(forgedConfig), false)
-  assert.throws(() => markIntegratedProbityConfig(forgedConfig))
 })

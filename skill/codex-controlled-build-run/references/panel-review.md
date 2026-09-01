@@ -6,7 +6,7 @@ This is the *how*: reviewing a `task_plan.md` before it goes into implementation
 
 ## What it is
 A panel = **at least two independent blind panelists**, answering the *same*
-review task, followed by **the orchestrator/captain running the panel judging and
+review task, followed by **the orchestrator running the panel judging and
 synthesizing** their answers. Use a strong Codex read-only subagent/session plus a
 different model family when the repository's ratified tooling makes one available;
 do not pretend two prompts to one shared context are independent diversity. The
@@ -19,8 +19,8 @@ cannot be delegated to a panelist.** So the synthesizer is whoever runs the revi
 over the plan:
 - **Builder (stream) plans → the ORCHESTRATOR synthesizes.** It authored the fleet, it
   dispatches the builder, it owns the merge — so it judges the panel on each stream plan.
-- **Orchestrator (fleet) plans → the CAPTAIN synthesizes.** The tier above reviews the tier
-  below's plan. (No captain in play? The orchestrator self-reviews its own fleet plan the
+- **Orchestrator (fleet) plans → the HUMAN is the synthesis seam.** The tier above reviews the tier
+  below's plan. (For its OWN fleet plan the orchestrator self-reviews the
   same way — a panel still beats one pass.)
 Each tier panel-reviews the plans it is about to dispatch. The synthesizer stays *separate*
 from the panelists — never paste one panelist's output into another's prompt.

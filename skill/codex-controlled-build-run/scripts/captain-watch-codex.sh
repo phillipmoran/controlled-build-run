@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Fire-once watcher and independent dead-man for one registered Codex strand.
+# Fire-once watcher for one registered Codex strand. (The separate --watchdog
+# dead-man retired with the 2026-08-31 control-plane diet: the silence tripwire
+# supersedes it. The heartbeat stays — status/doctor read its freshness.)
 set -euo pipefail
 
 slug="${1:-}"; shift || true
-[ -n "$slug" ] || { echo "usage: captain-watch-codex.sh <slug> [--watchdog]" >&2; exit 2; }
-watchdog=0
-[ "${1:-}" = "--watchdog" ] && watchdog=1
+[ -n "$slug" ] || { echo "usage: captain-watch-codex.sh <slug>" >&2; exit 2; }
+# Retired options must fail loudly, not arm an ordinary watcher: automation
+# still passing --watchdog would otherwise run a silent duplicate.
+[ $# -eq 0 ] || { echo "captain-watch-codex: unknown argument '$1' (--watchdog retired 2026-08-31, control-plane diet)" >&2; exit 2; }
 poll="${CBR_WATCH_POLL_SECONDS:-15}"
 review_tmp=""
 trap '[ -n "$review_tmp" ] && rm -f "$review_tmp" || true' EXIT
@@ -27,12 +30,6 @@ try: print(int(json.load(open(sys.argv[1])).get("stallSeconds",900)))
 except Exception: print(900)
 PY
 )"
-deadman="$(python3 - "$root/.cbr-codex.json" <<'PY'
-import json,sys
-try: print(int(json.load(open(sys.argv[1])).get("watchdogSeconds",900)))
-except Exception: print(900)
-PY
-)"
 
 epoch() { python3 - "$1" <<'PY'
 import os,sys
@@ -47,58 +44,54 @@ digest() { [ -f "$1" ] && shasum -a 256 "$1" | awk '{print $1}' || printf absent
 # looking at it, which is the worse failure. It says so out loud instead of
 # running quietly unguarded.
 CBR_STRAND_LIB="$(cd "$(dirname "$0")" && pwd)/../references/cbr-core/scripts/strand-lib.sh"
+[ -f "$CBR_STRAND_LIB" ] || CBR_STRAND_LIB="$(cd "$(dirname "$0")" && pwd)/../../cbr-core/scripts/strand-lib.sh"
 if [ -f "$CBR_STRAND_LIB" ]; then
   . "$CBR_STRAND_LIB"
 else
   cbr_marker_counts_as_done() { [ -f "$1" ]; }
-  echo "WATCH-NOTE marker-identity guard UNAVAILABLE (no $CBR_STRAND_LIB) — an inherited marker can false-latch"
+  cbr_done_marker_name() { echo "DONE.marker"; }
+  echo "WATCH-NOTE marker guard UNAVAILABLE (no $CBR_STRAND_LIB) — an uncommitted marker can false-latch"
 fi
 
-# The branch this watcher is watching. A completion marker in the worktree is
-# only this strand's if it names this branch: after a merge the worktree can be
-# carrying one that belongs to a strand which finished days ago, and latching on
-# it reports THIS build complete while leaving its builder unwatched.
+# The branch this watcher is watching. The completion marker is named FOR the
+# branch (strand-lib cbr_done_marker_name), so an inherited marker has a
+# different name and can never false-latch this watcher.
 watched_branch="$(git -C "$wt" branch --show-current 2>/dev/null || true)"
-# The no-readable-branch case is the shared predicate's business, not this
-# leaf's: it was law living as a private function in one harness.
-done_marker_is_ours() { cbr_marker_counts_as_done "$wt/DONE.marker" "$watched_branch"; }
+done_name="$(cbr_done_marker_name "$watched_branch")"
+done_marker_is_ours() { cbr_marker_counts_as_done "$wt/$done_name" "$watched_branch"; }
 alive() {
   [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null
 }
 
-if [ "$watchdog" -eq 1 ]; then
-  watchdog_started="$(date +%s)"
-  while :; do
-    [ -d "$run" ] || { echo "WATCHDOG-EVENT registry-retired slug=$slug"; exit 0; }
-    now="$(date +%s)"; heartbeat_epoch="$(epoch "$heartbeat")"
-    if [ "$heartbeat_epoch" -eq 0 ]; then age=$((now - watchdog_started)); else age=$((now - heartbeat_epoch)); fi
-    pid="$(cat "$run/pid" 2>/dev/null || true)"
-    if ! alive "$pid" && done_marker_is_ours; then
-      echo "WATCHDOG-EVENT retired slug=$slug"
-      exit 0
-    fi
-    if [ "$age" -gt "$deadman" ]; then
-      echo "WATCHDOG-EVENT stale-heartbeat slug=$slug age_seconds=$age"
-      exit 1
-    fi
-    sleep "$poll"
-  done
-fi
 
-done0="$(digest "$wt/DONE.marker")"; ask0="$(digest "$wt/ASK-ORCH.md")"
+# The terminal facts that RELEASE a builder from the stop gate. A watcher blind
+# to them turns a deliberate handoff into an unexplained stall — the builder is
+# allowed to go quiet and nobody is told why.
+park0="$(digest "$wt/NEEDS-HUMAN.md")"; hb0="$(digest "$wt/CONTROL-PLANE-BROKEN.marker")"
+sug0="$(digest "$wt/STOP-UNGUARDED.marker")"
+done0="$(digest "$wt/$done_name")"; ask0="$(digest "$wt/ASK-ORCH.md")"
+done_noted=
 printf 'done=%s\nask=%s\narmed=%s\n' "$done0" "$ask0" "$(date +%s)" >"$state"
 rm -f "$needs_arm"
 
 while :; do
   now="$(date +%s)"; printf '%s\n' "$now" >"$heartbeat"
-  done1="$(digest "$wt/DONE.marker")"; ask1="$(digest "$wt/ASK-ORCH.md")"
+  done1="$(digest "$wt/$done_name")"; ask1="$(digest "$wt/ASK-ORCH.md")"
   if [ "$done1" != "$done0" ]; then
     if done_marker_is_ours; then echo "WATCH-EVENT done-changed slug=$slug hash=$done1"; exit 0; fi
-    # Re-baseline, or every later poll re-reports the same inherited marker.
-    echo "WATCH-NOTE done-marker-foreign slug=$slug branch=${watched_branch:-unknown} — not latching; watching on"
-    done0="$done1"
+    # The watched file is the branch's own marker name, so the only refusal
+    # left is an uncommitted latch — the middle of a write-then-commit, whose
+    # finishing commit does not change the file. Keep the baseline (re-basing
+    # would deafen the watcher to its completion) and dedupe the note.
+    if [ "$done1" != "$done_noted" ]; then
+      echo "WATCH-NOTE done-marker-uncommitted slug=$slug branch=${watched_branch:-unknown} — not latching; watching on"
+      done_noted="$done1"
+    fi
   fi
   if [ "$ask1" != "$ask0" ]; then echo "WATCH-EVENT question-changed slug=$slug hash=$ask1"; exit 0; fi
+  if [ "$(digest "$wt/NEEDS-HUMAN.md")" != "$park0" ]; then echo "WATCH-EVENT needs-human slug=$slug"; exit 0; fi
+  if [ "$(digest "$wt/CONTROL-PLANE-BROKEN.marker")" != "$hb0" ]; then echo "WATCH-EVENT control_plane_broken slug=$slug"; exit 0; fi
+  if [ "$(digest "$wt/STOP-UNGUARDED.marker")" != "$sug0" ]; then echo "WATCH-EVENT stop-unguarded slug=$slug — the builder stopped without a terminal fact and the gate could not hold it"; exit 0; fi
   pid="$(cat "$run/pid" 2>/dev/null || true)"
   if ! alive "$pid"; then
     if done_marker_is_ours; then echo "WATCH-EVENT process-stopped-with-done slug=$slug pid=${pid:-absent}"; exit 0; fi

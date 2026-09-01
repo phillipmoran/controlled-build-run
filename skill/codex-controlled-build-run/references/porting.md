@@ -39,7 +39,6 @@ so paths, context, and removed legacy text cannot cause false positives.
   attestation proving the active exported config uses the current integration
   path, create-if-absent.
 - `.roborev.toml` — skeleton, create-if-absent.
-- `.cbr-codex/scripts/roborev-clean-gate.sh` — deterministic review gate, create-if-absent.
 - `.cbr-codex/scripts/plan-coherence.sh` — branch/plan/staged-work gate.
 - `.pre-commit-config.yaml` — fail-closed skeleton, create-if-absent.
 - `.cbr-codex.json` — portable repository knobs, create-if-absent.
@@ -87,27 +86,30 @@ Configure:
 Commands run in the new worktree. Keep them deterministic and non-interactive. An empty `setupCommands` list is valid only when the worktree needs no generated/ignored dependencies; `toolchainProbe` must still prove buildability.
 
 `activePlanPath` defaults to the strand-root `task_plan.md` and must remain so
-for dispatched builders. A repository maintaining the harness itself may point
+for dispatched builders. A repository maintaining the control plane itself may point
 it at a dedicated planning trio only when an unrelated root plan is already
 durable state; launch/dispatchability still enforce root-level stream plans.
 
 ## Hook adaptation
 
-Declare the complete post-compaction set in `.cbr-codex.json` under
-`reinjectionDocs`. The hook injects each existing file whole, followed by the
-skill, shared common law, exactly one role-specific process payload, active
-plan, findings, and progress. An orchestrator receives fleet law and Codex
-fleet mechanics; a workstream receives the build loop and Codex workstream
-mechanics, plus solo law when its branch is not a fleet-builder branch.
-Immediate continuation must not perform a file-reading orientation ritual.
+Declare the SHORT house-rules set in `.cbr-codex.json` under
+`reinjectionDocs` — the constitution-level invariants and the routing map,
+nothing more. The hook injects those whole, then the active plan, findings,
+and the progress tail, and lists everything else — principles, the skill,
+shared common law, exactly one role-specific process payload — as re-read
+POINTERS under a stated byte budget (the law is stable on disk; the in-flight
+state is what a compaction loses). An orchestrator gets fleet-law pointers
+and Codex fleet mechanics; a workstream gets the build loop and Codex
+workstream mechanics, plus solo law only when its branch is not a
+fleet-builder branch. Immediate continuation must not perform a file-reading
+orientation ritual.
 
 The package's `references/cbr-core/` directory is a generated, byte-exact
 snapshot of the canonical shared core. Refresh it mechanically when the
 canonical core changes, then run `scripts/tests/conformance.py` before exporting
 or installing the leaf. Do not hand-weave core paragraphs into provider files.
-The default mode is portable and never assumes the target contains
-the reference host's Git history. `--canonical-source-repo` is reserved for this source
-repository's own gate.
+The check is portable and never assumes the target contains the upstream repo's
+Git history.
 
 ## Models
 

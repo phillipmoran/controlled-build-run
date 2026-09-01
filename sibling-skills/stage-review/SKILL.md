@@ -1,7 +1,7 @@
 ---
 name: stage-review
 description: >-
-  Stage-boundary review for the origin host project's long autonomous build runs — the
+  Stage-boundary review for the reference host's long autonomous build runs — the
   middle cadence between per-commit RoboRev (the microscope) and the session-end
   closeout (the horizon). Run this whenever you finish a stage of a multi-stage
   plan (a coherent group of cycles/commits, e.g. "Stage 3: prompt assembly,
@@ -19,7 +19,7 @@ description: >-
 
 ## Why this exists
 
-the origin host runs three review cadences, at three altitudes:
+The reference host runs three review cadences, at three altitudes:
 
 - **Per-commit: RoboRev (microscope).** One commit's diff, in isolation, at commit time. Advisory. Cannot see across commits; does not read the plan or the roadmap.
 - **Per-stage: this skill (telescope).** A *whole stage's* work as a unit, at the stage boundary, against the binding docs and contracts.
@@ -62,7 +62,7 @@ It does **NOT** read `docs/_handoffs/` or `spiritual-explorations/` — stale na
 ### Subagent prompt template
 
 ```
-You are a stage-boundary reviewer for the host repo. Read-only — do not modify anything.
+You are a stage-boundary reviewer for the the reference host repo. Read-only — do not modify anything.
 
 The stage just completed: [STAGE NAME, e.g. "Stage 3 prompt assembly, R3–P7"].
 Its commit range is [BASE_SHA..HEAD] (BASE_SHA = the recorded stage-start). The contracts it touched: [list, or "none"].
@@ -94,8 +94,8 @@ The split is the whole point: a discipline finding is checkable against the docs
 A lane-crossing is the only thing that stops the run. When the review finds one:
 
 1. Pause — do not begin the next stage.
-2. Surface it **in-session, where the operator will see it on their return**: name the stage that finished, the specific decision made in code (`file:line`), and why it's their call. Then **end your turn and yield** — do not spin or poll. A simple visible pause is the mechanism; no push notification for now (that can come later).
-3. The operator answers on their return. Resume per their answer:
+2. Surface it **in-session, where the operator will see it when they return**: name the stage that finished, the specific decision made in code (`file:line`), and why it's their call. Then **end your turn and yield** — do not spin or poll. A simple visible pause is the mechanism; no push notification for now (that can come later).
+3. The operator answers when they come back. Resume per their answer:
    - **Ratify** → record the decision where it belongs (usually a contract edit, so it becomes enforced, not just blessed), then continue.
    - **Redirect** → make the change he calls for (under TDD if it touches code), **re-run the stage review** on the corrected work, then continue.
    - **Defer** → note it as an open item; continue only if he says the next stage does not depend on it.
@@ -104,7 +104,7 @@ When you pause, state plainly what you are waiting on and what you will do on ea
 
 ## Re-run after any fix
 
-After you change anything at a boundary — your own fix of a load-bearing discipline finding, *or* a the operator-directed redirect — **re-run the stage review on the corrected work** before continuing. A fix can introduce new drift. Bound it: if the review keeps surfacing issues across ~2 rounds, stop and surface to the operator — repeated churn is a signal something deeper is off, not something to grind on.
+After you change anything at a boundary — your own fix of a load-bearing discipline finding, *or* an operator-directed redirect — **re-run the stage review on the corrected work** before continuing. A fix can introduce new drift. Bound it: if the review keeps surfacing issues across ~2 rounds, stop and surface to the operator — repeated churn is a signal something deeper is off, not something to grind on.
 
 ## What this is not
 

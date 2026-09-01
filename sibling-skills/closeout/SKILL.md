@@ -1,7 +1,7 @@
 ---
 name: closeout
 description: >-
-  Gather the deterministic, repeatable facts a the origin host closeout opens with, in one
+  Gather the deterministic, repeatable facts a reference-host closeout opens with, in one
   read-only command — current HEAD, commits ahead of origin, the commit range since
   the last closeout, the suite pass/xfail count, the UTC timestamp for new filenames,
   and the SOUL.md word-ceiling check.
@@ -56,7 +56,7 @@ For the anchor to keep working, the closeout's final commit subject must start w
 It **gathers facts; it does not make judgments.** It does not write the handoff or the
 memory entries; it does not run the pre-closeout review; it does not touch the roadmap; it
 commits nothing. Those are judgment calls and they stay with you — automating them is
-exactly where this kind of helper goes wrong. The split is the same one the origin host's gate lives
+exactly where this kind of helper goes wrong. The split is the same one the reference host's gate lives
 by: *deterministic facts may be gathered and gated; fallible judgment may only be
 surfaced.* This script is pure deterministic facts. A bug in it shows up as a
 wrong-looking number you can eyeball against reality, never as corrupted state.
@@ -70,7 +70,7 @@ wrong-looking number you can eyeball against reality, never as corrupted state.
   commit.** A later session sometimes amends an older handoff, which would drag a
   "last-touched" anchor forward and undercount. The script uses `git log --diff-filter=A`
   to find the commit that *added* the file.
-- **Parallel sessions move HEAD.** the origin host sometimes has more than one session live (see
+- **Parallel sessions move HEAD.** the reference host sometimes has more than one session live (see
   `<work_discipline>`). HEAD and the ahead-count can change between two runs. That is the
   script reading reality correctly, not a bug — re-run it if a parallel merge lands while
   you are mid-closeout.

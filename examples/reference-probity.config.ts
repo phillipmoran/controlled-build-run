@@ -5,9 +5,9 @@ import {
 } from '@nizos/probity'
 
 const noProjectPrefix = forbidContentPattern({
-  match: /\b(from|import)\s+canon_\w+/,
+  match: /\b(from|import)\s+myproj_\w+/,
   reason:
-    'Project-prefixed module names ("canon_X") are forbidden. Drop the prefix — see AGENTS.md <naming>.',
+    'Project-prefixed module names ("myproj_X") are forbidden. Drop the prefix — see AGENTS.md <naming>.',
 })
 
 const noJargonModuleNames = forbidContentPattern({

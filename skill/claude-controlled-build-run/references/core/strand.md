@@ -5,8 +5,8 @@ Part of `cbr-core`, the provider-neutral CBR law.
 ## The strand
 
 Every non-trivial plan gets its **own worktree on its own branch**, with the
-build session **rooted in that worktree**. The harness binds to a *folder*,
-so a misrooted session guards and re-grounds the *wrong* plan.
+build session **rooted in that worktree**. The control plane binds to a _folder_,
+so a misrooted session guards and re-grounds the _wrong_ plan.
 
 **Why:** the re-ground hook reads `task_plan.md` from the session's worktree
 root, and Probity only guards the gated tree under the session's own root.
@@ -27,7 +27,7 @@ is yours to run in-session regardless. By hand:
 1. **Make the folder + branch** (`git worktree add` from the repo root), then
    **provision the gitignored deps the gate needs** — a fresh worktree has no
    installed dependency trees, yet the pre-commit hooks run unconditionally,
-   so the builder's *first* commit dies on missing toolchains. Link or build
+   so the builder's _first_ commit dies on missing toolchains. Link or build
    the dependency trees per the leaf's provision recipe before anything else.
    Stack-specific prep beyond the leaf's recipe belongs in the **project prep
    hook** — `.cbr/provision-hook.sh` at the primary repo root, run by every
@@ -38,7 +38,7 @@ is yours to run in-session regardless. By hand:
    only the socket and examples.
    Provision also owes the newborn two more duties (shared mechanics in
    `scripts/strand-lib.sh`): **reset stale records** — the worktree inherits
-   the base's `STATUS.md`/`DONE.marker`/ASK-ORCH leftovers, and a watcher
+   the base's `STATUS.md`/`DONE-*.marker`/ASK-ORCH leftovers, and a watcher
    that glances at a dead strand's "COMPLETE" believes a build that never ran
    — and **pin the base** (recorded at birth, asserted at launch with
    `merge-base --is-ancestor`) so a branch that grew from the wrong place is
@@ -46,10 +46,10 @@ is yours to run in-session regardless. By hand:
 2. **Put the plan in it**, and write the branch at the top of
    `task_plan.md`: `**Branch:** <branch>` — so anyone landing there knows
    where they belong.
-3. **Check the harness in that folder:** pwd/branch right, and a Probity
+3. **Check the control plane in that folder:** pwd/branch right, and a Probity
    probe (untested prod code → must be blocked) confirms the hooks bite here.
-4. **Prove the session can actually *build*, not just that it's guarded.**
-   Step 3 proves the gate says *no*; this proves the path says *yes*. Run one
+4. **Prove the session can actually _build_, not just that it's guarded.**
+   Step 3 proves the gate says _no_; this proves the path says _yes_. Run one
    real toolchain command and make one throwaway allowed edit (a write you
    then delete) — both must succeed. A dispatched builder running unattended
    under a prompting permission layer silently blocks its toolchain, its
@@ -61,14 +61,14 @@ is yours to run in-session regardless. By hand:
    never remove the fail-closed gates, which are hooks, not permissions.
 
 **Every time a session opens (and after every compaction):** confirm the
-current branch matches the plan's `**Branch:**` line, AND the harness check
+current branch matches the plan's `**Branch:**` line, AND the control-plane check
 passes (Probity blocks an untested write). If either fails, you're in the
 wrong place — stop, don't build.
 
 ## Plan altitude — decision-dense, implementation-sparse
 
-A plan is a **contract, not a script**: it fixes the *decisions* and the
-*acceptance bar* and leaves the *implementation* to the builder. A frontier
+A plan is a **contract, not a script**: it fixes the _decisions_ and the
+_acceptance bar_ and leaves the _implementation_ to the builder. A frontier
 builder executes it faithfully and expensively, so the plan is where the
 cheap review pays off — get the decisions right, not the keystrokes. Two
 failure modes bound the altitude:
@@ -79,15 +79,21 @@ failure modes bound the altitude:
   cycles re-litigating settled design and inviting drift. A plan that won't
   converge at the review gate is usually this: the view is under-specified.
 - **Too concrete** (line-by-line pseudocode) is brittle the moment the code
-  doesn't match your assumptions, wastes what the builder is *for*, and means
+  doesn't match your assumptions, wastes what the builder is _for_, and means
   you wrote the logic yourself — outside Probity's write-time guard.
+
+**The sizing rule:** one step is **one behavior** — roughly **≤400 lines of
+product diff**, green at its end, revertable as a unit. A step that cannot
+fit is split **at planning time**; discovering the split mid-build means the
+plan was written at the wrong altitude, and the most expensive reader found
+it first.
 
 **The sweet spot:** each build step names its **observable outcome**, the
 **watched-fail test that proves it** (test-first), the **decisions already
 locked** (event carrier, field, threshold, color, seed, the `file:line`
 anchors), the **files it owns**, and its **verification command** — then
-stops. Resolve every open design fork *before* dispatch (park human-only
-ones in *Open with the human*); a builder must never start on an unresolved
+stops. Resolve every open design fork _before_ dispatch (park human-only
+ones in _Open with the human_); a builder must never start on an unresolved
 fork, or it becomes a 4am guess. The plan-review gate's mechanical criteria —
 test-drivable steps, perceivable fields named with their binding rule,
 verification present — exist to pull a plan to this altitude: treat them as

@@ -2,7 +2,7 @@
 # strand-lib.sh — the shared, provider-neutral mechanics of a strand's death
 # ritual. Part of `cbr-core`: the law that these steps HAPPEN is step 9 of
 # `build-loop.md` ("The three duties closeout owes the base branch"); this file
-# is the pure-git machinery that performs them, so both harness leaves run the
+# is the pure-git machinery that performs them, so both agent-harness leaves run the
 # SAME mechanism instead of two drifting copies of it — which is what that law
 # asks for, and for the reason it gives: the drift is invisible because the
 # failure shows up in the NEXT strand, not this one.
@@ -21,7 +21,7 @@
 # exist). A non-zero return means the work could not be done: an unreadable
 # repository, a missing argument, or a record that exists and could not be
 # saved. It never means "nothing to do". The
-# predicates (`cbr_branch_is_merged`, `cbr_marker_is_foreign`,
+# predicates (`cbr_branch_is_merged`, `cbr_marker_counts_as_done`,
 # `cbr_path_has_live_process`) are the deliberate exception: they answer a
 # yes/no question with their exit status and print nothing.
 
@@ -36,7 +36,7 @@ task_plan.md
 progress.md
 findings.md
 STATUS.md
-DONE.marker
+DONE-*.marker
 ASK-ORCH.md
 ORCH-ANSWER.md
 KNOWN-LIMITATIONS.md
@@ -65,8 +65,11 @@ EOF
 cbr_provision_reset_stale_records() {
   local wt="${1:?worktree required}"
   [ -d "$wt" ] || { echo "strand-lib: worktree '$wt' does not exist" >&2; return 1; }
-  local n=0 rc=0 f
-  for f in STATUS.md DONE.marker ASK-ORCH.md ORCH-ANSWER.md KNOWN-LIMITATIONS.md; do
+  local n=0 rc=0 f markers
+  # The per-branch marker family expands against the WORKTREE, not the caller's
+  # cwd (sanitized names carry no spaces, so word-splitting is safe).
+  markers="$(cd "$wt" && for f in DONE-*.marker; do [ -e "$f" ] || [ -L "$f" ] && printf '%s\n' "$f"; done)"
+  for f in STATUS.md DONE.marker $markers ASK-ORCH.md ORCH-ANSWER.md KNOWN-LIMITATIONS.md; do
     if [ -e "$wt/$f" ] || [ -L "$wt/$f" ]; then
       if [ -d "$wt/$f" ] && [ ! -L "$wt/$f" ]; then
         echo "strand-lib: inherited $wt/$f is a directory, not a record — clear it by hand" >&2
@@ -174,7 +177,7 @@ cbr_strand_fork_point() {
   # fallback, and every fallback that can name a WRONG commit (merge-base of
   # a merged strand names its own merged tip) shrinks the archive silently
   # (RoboRev 3795). Full first-parent lists are cheap at any history this
-  # harness will meet, and a genuine miss — disjoint histories — returns
+  # control plane will meet, and a genuine miss — disjoint histories — returns
   # failure, which the caller reads as "unknown" and archives unfiltered.
   base_chain="$(git -C "$repo" rev-list --first-parent "$base" 2>/dev/null)" || return 1
   [ -n "$base_chain" ] || return 1
@@ -249,8 +252,58 @@ cbr_archive_strand_records() {
     [ "$fork" = "$(git -C "$repo" rev-parse -q --verify "$ref^{commit}" 2>/dev/null)" ] && fork=""
   fi
 
-  local n=0 f rc=0 probe entry part ref_blob fork_blob
+  local n=0 f rc=0 probe entry part ref_blob fork_blob expanded="" dm
+  # A list entry may be a PATTERN naming a family of records (DONE-*.marker):
+  # expand it against the tree being archived, so each match archives under its
+  # own name, and clear stale destination matches from earlier runs — the same
+  # cross-run-debris rule the absent case applies to a literal name.
   for f in "$@"; do
+    [ -n "$f" ] || continue
+    case "$f" in
+      *[\*\?\[]*)
+        # ls-tree takes its path arguments literally, so the pattern is matched
+        # here, against the tree's own root listing.
+        probe=0
+        entry="$(git -C "$repo" ls-tree --name-only "$ref" 2>/dev/null)" || probe=$?
+        if [ "$probe" -ne 0 ]; then
+          echo "strand-lib: git could not inspect $ref in $repo (exit $probe)" >&2
+          rc=1
+          continue
+        fi
+        probe="$entry"; entry=""
+        while IFS= read -r dm; do
+          [ -n "$dm" ] || continue
+          # shellcheck disable=SC2254
+          case "$dm" in
+            $f) entry="${entry}${dm}
+" ;;
+          esac
+        done <<EOM
+$probe
+EOM
+        entry="${entry%
+}"
+        for dm in "$dest"/$f; do
+          { [ -e "$dm" ] || [ -L "$dm" ]; } || continue
+          printf '%s\n' "$entry" | grep -qxF "$(basename "$dm")" && continue
+          if [ -d "$dm" ] && [ ! -L "$dm" ]; then
+            echo "strand-lib: stale $dm is a directory, not a record — clear it by hand" >&2
+            rc=1
+          elif ! rm -f "$dm"; then
+            echo "strand-lib: stale $dm could not be cleared" >&2
+            rc=1
+          fi
+        done
+        [ -n "$entry" ] && expanded="${expanded}${entry}
+"
+        ;;
+      *)
+        expanded="${expanded}${f}
+"
+        ;;
+    esac
+  done
+  while IFS= read -r f; do
     [ -n "$f" ] || continue
     # "Is this path in that tree" must be answerable WITHOUT conflating two very
     # different answers: a record the strand never wrote, and a repository git
@@ -344,7 +397,9 @@ cbr_archive_strand_records() {
       continue
     fi
     n=$((n + 1))
-  done
+  done <<EOF
+$expanded
+EOF
   echo "archived=$n"
   return "$rc"
 }
@@ -621,88 +676,224 @@ cbr_reground_plan_branch() {
 }
 
 # ---------------------------------------------------------------------------
-# cbr_marker_branch MARKER
+# cbr_done_marker_name BRANCH   -> the per-branch completion marker filename
 #
-# The branch a completion marker names on its first line, or nothing.
-#
-# The convention is `<branch> — COMPLETE <date>`, so the branch is the first
-# token. "Or nothing" is load-bearing: markers written before the convention
-# open with a slug or a title, and guessing a branch out of those would make
-# every one of them look foreign to every watcher.
+# The marker is named FOR its branch (DONE-<sanitized-branch>.marker), so a
+# marker inherited from another strand simply has a different name and can
+# never false-latch a watcher. This replaced the content-identity ("which
+# branch does the marker's first line name") machinery on 2026-08-31: naming
+# the file per branch answers the ownership question structurally, with
+# nothing left to prove at read time. An empty branch (detached HEAD) gets
+# the bare legacy name — a caller with no branch has no basis to demand one.
 # ---------------------------------------------------------------------------
-cbr_marker_branch() {
-  local marker="${1:?marker path required}" token
-
-  [ -f "$marker" ] || return 0
-
-  # Take the first token of the first line, then let GIT say whether it is a
-  # branch name. Approximating git's rules by hand does not fail safely here: a
-  # name the approximation rejects is reported as "names nobody", which the
-  # watchers read as "mine", and a name it wrongly accepts is reported as a
-  # branch that will never match, which disarms completion for the whole run.
-  # `check-ref-format` is the same rule git itself enforces, needs no
-  # repository, and expands nothing (unlike `--branch`, which resolves @{-1}).
-  token="$(head -1 "$marker" 2>/dev/null | awk '{ sub(/\r$/, ""); print $1; exit }')"
-  [ -n "$token" ] || return 0
-
-  # One slash minimum: `refs/heads/COMPLETE` is a perfectly valid ref, so
-  # without this a marker headed by a bare word would be read as naming a
-  # branch. Every strand branch in this process is `<kind>/<slug>`.
-  case "$token" in
-    */*) ;;
-    *) return 0 ;;
-  esac
-
-  git check-ref-format "refs/heads/$token" 2>/dev/null || return 0
-  printf '%s\n' "$token"
+cbr_done_marker_name() {
+  local branch="${1-}"
+  [ -n "$branch" ] || { echo "DONE.marker"; return 0; }
+  printf 'DONE-%s.marker\n' "$(printf '%s' "$branch" | tr -c 'A-Za-z0-9._-' '-')"
 }
 
-# ---------------------------------------------------------------------------
-# cbr_marker_is_foreign MARKER BRANCH   (exit 0 = proven foreign)
-#
-# Does this marker belong to a DIFFERENT strand than BRANCH?
-#
-# Only a proven mismatch counts. A marker naming no branch, and a marker that
-# does not exist, are both "not foreign" — the direction matters, because a
-# false foreign verdict silently disables the completion signal, while a false
-# native verdict merely leaves the pre-existing behaviour in place.
-# ---------------------------------------------------------------------------
-cbr_marker_is_foreign() {
-  local marker="${1:?marker path required}" branch="${2:?branch required}" named
-  named="$(cbr_marker_branch "$marker")"
-  [ -n "$named" ] || return 1
-  [ "$named" != "$branch" ]
-}
-
-# ---------------------------------------------------------------------------
-# cbr_marker_counts_as_done MARKER BRANCH   (exit 0 = treat as this strand's completion)
-#
-# The question every watcher actually asks. A completion marker means "the build
-# I am watching has finished" — and after a merge, the marker sitting in the
-# worktree may belong to a strand that finished days ago, carried in on the base
-# branch with its work.
-#
-# A watcher that latches on that marker exits, tells the human the build is done
-# on the day it started, and leaves the builder unwatched for the rest of its
-# run. So: the marker must exist, and it must not be provably somebody else's.
-#
-# Note the asymmetry, which is deliberate. Foreignness must be PROVEN — a marker
-# naming no branch counts as ours, because markers predate the convention that
-# they name one, and refusing those would quietly disarm the completion signal
-# everywhere at once. A missed latch is loud (the watcher stalls, the stall
-# fires, a human looks); a wrongly disarmed DONE is silent.
-# ---------------------------------------------------------------------------
+# cbr_marker_counts_as_done MARKER BRANCH  (exit 0 = this strand's completion)
+# Completion = the branch's OWN marker name, present, and committed (an
+# uncommitted latch dies with the worktree and claims nothing to anyone
+# outside it). Identity is the filename; durability is the commit.
 cbr_marker_counts_as_done() {
   local marker="${1:?marker path required}" branch="${2-}"
   [ -f "$marker" ] || return 1
-  # An EMPTY branch is the detached-HEAD case, and it is deliberately not an
-  # error: a caller with no readable branch has no basis on which to call the
-  # marker somebody else's, and the same asymmetry applies — refusing to latch
-  # there would silently disarm completion for the whole run. `${2:?}` would
-  # instead abort the caller's shell, which is how a guard turns into an outage.
-  [ -n "$branch" ] || return 0
-  ! cbr_marker_is_foreign "$marker" "$branch"
+  [ "$(basename "$marker")" = "$(cbr_done_marker_name "$branch")" ] || return 1
+  cbr_marker_is_committed "$marker"
 }
+
+# ---------------------------------------------------------------------------
+# cbr_push_firewall_behaves HOOK   (exit 0 = both denials hold, ordinary push allowed)
+#
+# Ownership and RECOGNITION are different questions, and answering the second
+# with the first is how a guard starts crying wolf. Whether a hook is ours to
+# rewrite must be decided by exact bytes — a hook a human composed may never be
+# clobbered. Whether the firewall is actually holding cannot be: a composed
+# body has different bytes and identical behaviour, and reporting it as "stale
+# or edited — a push to main may pass" trains people to ignore the one alarm
+# that guards a branch which auto-deploys.
+#
+# So this RUNS the hook, against the cases that define the firewall:
+#   rc 1 — a builder branch pushes anything            (layer 1 missing)
+#   rc 2 — main is reachable from ANY of the routes    (layer 2 missing)
+#   rc 3 — the hook is not executable or the probe could not be built
+#   rc 4 — an ordinary push is denied too, so this is not a firewall but a wall
+# Decides nothing: the caller reports.
+#
+# The probe is only worth its verdict if it feeds the hook what git feeds it:
+#   - one stdin LINE PER REF. `git push origin side:side main:main` sends two,
+#     side first. A hook that reads a single line never sees main, and a
+#     one-line probe blesses it.
+#   - real 40-hex oids, because a hook may hand them to git.
+#   - the routes layer 1 cannot see: a side branch AND a detached HEAD, the
+#     bypass the shipped body's own comment names as proven live.
+#   - the hook EXECUTED, not read by `sh`: git honours the shebang, so forcing
+#     sh misjudges a bash (or python) hook by its own dialect.
+# And every git call runs with the ambient GIT_* scrubbed: this repo's standing
+# scar is a temp-repo fixture that inherited a hook's GIT_DIR and operated on
+# the primary checkout instead of its own scratch one.
+# ---------------------------------------------------------------------------
+cbr__nogit() {
+  env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_OBJECT_DIRECTORY \
+      -u GIT_COMMON_DIR -u GIT_NAMESPACE -u GIT_ALTERNATE_OBJECT_DIRECTORIES \
+      -u GIT_CONFIG_COUNT -u GIT_PREFIX "$@"
+}
+
+cbr_push_firewall_behaves() {
+  local hook="${1:?hook path required}"
+  [ -f "$hook" ] || return 3
+  [ -x "$hook" ] || return 3
+  local d rc=0
+  d="$(mktemp -d)" || return 3
+  cbr__nogit git init -q -b stream/fwprobe "$d" >/dev/null 2>&1 || { rm -rf "$d"; return 3; }
+  cbr__nogit git -C "$d" config user.email fwprobe@example.invalid >/dev/null 2>&1
+  cbr__nogit git -C "$d" config user.name fwprobe >/dev/null 2>&1
+  cbr__nogit git -C "$d" commit -q --allow-empty -m fwprobe >/dev/null 2>&1 \
+    || { rm -rf "$d"; return 3; }
+
+  local oid_l=1111111111111111111111111111111111111111
+  local oid_r=2222222222222222222222222222222222222222
+  # one line per ref, exactly as git writes them
+  local side_only main_too
+  side_only="refs/heads/side $oid_l refs/heads/side $oid_r
+"
+  main_too="refs/heads/side $oid_l refs/heads/side $oid_r
+refs/heads/main $oid_l refs/heads/main $oid_r
+"
+
+  # $1 = stdin payload; exit 0 means the hook ALLOWED the push
+  cbr__fw_allows() {
+    ( cd "$d" && printf '%s' "$1" | CBR_ALLOW_PUSH= cbr__nogit "$hook" origin file:///dev/null ) \
+      >/dev/null 2>&1
+  }
+
+  # layer 1 — on a builder branch, nothing goes out
+  cbr__fw_allows "$side_only" && rc=1
+
+  if [ "$rc" -eq 0 ]; then
+    cbr__nogit git -C "$d" checkout -q -b fwprobe/side >/dev/null 2>&1 \
+      || { rm -rf "$d"; unset -f cbr__fw_allows; return 3; }
+    # layer 2, route A — from a side branch, a push whose ref list contains
+    # main is refused
+    cbr__fw_allows "$main_too" && rc=2
+  fi
+  if [ "$rc" -eq 0 ]; then
+    # layer 2, route B — the same from a detached HEAD, where there is no
+    # current-branch name for layer 1 to match on
+    cbr__nogit git -C "$d" checkout -q --detach >/dev/null 2>&1 \
+      || { rm -rf "$d"; unset -f cbr__fw_allows; return 3; }
+    cbr__fw_allows "$main_too" && rc=2
+    cbr__nogit git -C "$d" checkout -q fwprobe/side >/dev/null 2>&1 \
+      || { rm -rf "$d"; unset -f cbr__fw_allows; return 3; }
+  fi
+  if [ "$rc" -eq 0 ]; then
+    # ...and an ordinary push still passes, or this is not a firewall
+    cbr__fw_allows "$side_only" || rc=4
+  fi
+  unset -f cbr__fw_allows
+  rm -rf "$d"
+  return "$rc"
+}
+
+# ---------------------------------------------------------------------------
+# cbr_push_firewall_verdict HOOK [TEMPLATE]  -> one word on stdout
+#
+#   missing | current | current-not-executable | not-executable |
+#   behaves | layer-1-missing | layer-2-missing | wall | unknown
+#
+# The whole firewall decision, once, so both leaves report the same fact about
+# the same hook. Two doctors deciding this separately is two implementations of
+# a guard on the branch that auto-deploys, and the one that drifts is always the
+# one nobody runs by hand.
+#
+# The override token (CBR_ALLOW_PUSH) answers OWNERSHIP — may we rewrite this
+# body — and nothing else. Gating recognition on it reported a hook that denies
+# builder pushes and every route to main with no escape hatch at all as "push
+# firewall missing", which is the opposite of what it is. What a hook DOES is
+# decided by running it.
+# ---------------------------------------------------------------------------
+cbr_push_firewall_verdict() {
+  local hook="${1:?hook path required}" want="${2:-}"
+  [ -e "$hook" ] || { echo missing; return 0; }
+  if [ -n "$want" ] && [ -f "$want" ] && cmp -s "$want" "$hook"; then
+    if [ -x "$hook" ]; then echo current; else echo current-not-executable; fi
+    return 0
+  fi
+  [ -x "$hook" ] || { echo not-executable; return 0; }
+  local rc=0
+  cbr_push_firewall_behaves "$hook" || rc=$?
+  case "$rc" in
+    0) echo behaves ;;
+    1) echo layer-1-missing ;;
+    2) echo layer-2-missing ;;
+    3) echo not-executable ;;
+    4) echo wall ;;
+    *) echo unknown ;;
+  esac
+}
+
+
+# ---------------------------------------------------------------------------
+# cbr_worktree_occupancy PATH  -> yes | no | unknown
+#
+# Occupancy as a tri-state, in one place, because every caller that asks gets
+# the same three answers and the same right to be wrong in only one direction:
+# yes = a live process is rooted at/under PATH, no = process-table-proven
+# empty, unknown = the table could not be inspected (never read as "empty" by
+# anything destructive). Echoes the verdict; never fails.
+# ---------------------------------------------------------------------------
+cbr_worktree_occupancy() {
+  local path="${1:?path required}" rc=2
+  if cbr_path_has_live_process "$path"; then rc=0; else rc=$?; fi
+  case "$rc" in 0) echo yes ;; 1) echo no ;; *) echo unknown ;; esac
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# cbr_marker_is_committed MARKER [REF]  (exit 0 = REF carries THIS marker's
+# content; REF defaults to HEAD)
+#
+# REF exists for callers that ask a SECOND question about the same marker: HEAD
+# is as mutable as the working file — the builder being watched is committing —
+# so a caller that resolves it twice can prove durability against one commit and
+# read identity out of the next. Pin it once, pass it to both.
+#
+# A completion marker is a claim read by people and processes OUTSIDE the
+# worktree — a merge gate, a reap decision, an archive. Uncommitted, it dies
+# with the worktree and makes that claim to nobody, so a builder that writes
+# its latch and then crashes would otherwise be recorded as finished.
+#
+# The question is about the CONTENT, not the path. A fix round rewrites a
+# marker that is already tracked: the path sits in HEAD throughout, so a
+# presence check calls the new claim durable the instant it is written — the
+# very false latch this predicate exists to prevent, in the one shape where a
+# presence check looks satisfied. The index does not count either; a staged
+# blob dies with the worktree exactly as an unstaged edit does.
+#
+# Outside a repository there is no commit contract to hold anyone to, so the
+# honest answer there is yes. That is not a loophole: the callers that matter
+# all run against a worktree.
+# ---------------------------------------------------------------------------
+cbr_marker_is_committed() {
+  local marker="${1:?marker path required}" ref="${2:-HEAD}"
+  local dir; dir="$(dirname "$marker")"
+  local base; base="$(basename "$marker")"
+  git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  # Repo-root-relative, not the bare basename: `HEAD:DONE.marker` asks about a
+  # file at the top of the repository, which for any nested marker is a
+  # different file that may well be committed while this one is not.
+  local prefix; prefix="$(git -C "$dir" rev-parse --show-prefix 2>/dev/null)"
+  local head_blob work_blob
+  head_blob="$(git -C "$dir" rev-parse --quiet --verify "${ref}:${prefix}${base}" 2>/dev/null)" || return 1
+  [ -n "$head_blob" ] || return 1
+  # $base, not $marker: `-C "$dir"` has already moved into the marker's own
+  # directory, so a relative path with a directory component would be resolved
+  # twice and the answer would depend on the caller's cwd.
+  work_blob="$(git -C "$dir" hash-object -- "$base" 2>/dev/null)" || return 1
+  [ "$work_blob" = "$head_blob" ]
+}
+
 
 # ---------------------------------------------------------------------------
 # cbr_live_cwds — every process's current directory, one per line.
@@ -822,7 +1013,7 @@ cbr_stage_paths() {
 # The three duties closeout owes the base branch, performed in the order that
 # survives an interruption: SAVE first, then remove, then reground.
 #
-# This composite exists so a harness with more than one leaf has exactly ONE
+# This composite exists so a control plane with more than one leaf has exactly ONE
 # implementation of the ritual — the law in `build-loop.md` step 9 asks for
 # that by name, and for the reason it gives: two copies of a rule this quiet
 # drift invisibly, because the damage lands on the NEXT strand rather than
@@ -903,7 +1094,7 @@ cbr_closeout_base_duties() {
 
 # cbr_tool_staleness_report [PINNED_PROBITY_VERSION]
 #
-# WARN-only staleness probe for the harness's own tooling (backlog 2026-08-27:
+# WARN-only staleness probe for the control plane's own tooling (backlog 2026-08-27:
 # the review tool sat 6 versions behind with nobody noticing). Prints one line
 # per stale tool and NOTHING else; every failure path — tool missing, network
 # down, output unparseable, no pin known — is silent and exits 0. This probe
@@ -942,5 +1133,126 @@ cbr_tool_staleness_report() {
       echo "tool-staleness: probity pinned $pin, latest $latest (human decision: bump the pin deliberately)"
     fi
   fi
+  return 0
+}
+
+# cbr_seed_status_record SKELETON WORKTREE BRANCH [ASK_FILE] — the observer's
+# record, up from line one of the strand's life.
+#
+# Provision already REMOVES the base's inherited STATUS.md, which is only half
+# the duty: a worktree with no STATUS.md leaves a watcher exactly as blind as
+# one wearing a dead strand's "COMPLETE". The leaf owns the skeleton (its own
+# blocker-file names differ); the substitution is one implementation here,
+# because two leaves filling in the same fields two ways is the drift this
+# library exists to prevent.
+#
+# Never clobbers: an existing STATUS.md belongs to whoever wrote it. A skeleton
+# the leaf cannot find is a misconfiguration and FAILS — reporting success over
+# a strand that ends up with no observer record at all would leave exactly the
+# blindness this duty exists to end.
+# Prints seeded=written|already, or seeded=no-skeleton with a non-zero return.
+cbr_seed_status_record() {
+  local skel="$1" wt="$2" branch="$3" askfile="${4:-ASK-ORCH.md}"
+  if [ -e "$wt/STATUS.md" ]; then echo "seeded=already"; return 0; fi
+  if [ ! -f "$skel" ]; then echo "seeded=no-skeleton"; return 1; fi
+  local today
+  today="$(date +%F)"
+  sed -e "s|<branch>|$branch|g" \
+      -e "s|<absolute path>|$wt|g" \
+      -e "s|<ask file>|$askfile|g" \
+      -e "s|^state=.*|state=building|" \
+      -e "s|^blocked_on=.*|blocked_on=none|" \
+      -e "s|^last_phase_complete=.*|last_phase_complete=none|" \
+      -e "s|^updated=.*|updated=$today|" \
+      "$skel" > "$wt/STATUS.md" || return 1
+  echo "seeded=written"
+}
+
+# ---------------------------------------------------------------------------
+# cbr_brick_report — the two node_modules states that each cost a half-day
+# outage, named with their exact repair:
+#   (1) DANGLING package link: Probity re-loads probity.config.ts on EVERY
+#       gated tool call and fails CLOSED on a load error, so one unresolvable
+#       import bricks every gated tool at once — unfixable from inside the
+#       bricked session.
+#   (2) FOREIGN link: `pnpm install` run inside a symlink-provisioned worktree
+#       follows the chain and rewrites the PRIMARY's top-level links into the
+#       worktree's own .pnpm — everything resolves until that worktree is
+#       reaped, then the whole toolchain dies MODULE_NOT_FOUND.
+# Facts only, always returns 0: the doctor grades, the human repairs.
+# The anchor is the physical PARENT of the resolved node_modules — a
+# symlink-provisioned worktree legitimately resolves everything in the primary,
+# and workspace packages legitimately link to sibling source dirs; only a
+# target outside the repo that physically hosts the store is foreign.
+# ---------------------------------------------------------------------------
+cbr_brick_report() {
+  local root="$1" nm="$1/node_modules" nmphys anchor entry phys store healthy dangling=0 foreign=0
+  if ! nmphys="$(cd "$nm" 2>/dev/null && pwd -P)"; then
+    # A dangling node_modules SYMLINK is not an unprovisioned folder — it is
+    # the reaped-primary brick itself (the provisioning link outlived its
+    # target), and "absent" would be the summary the doctors wave through.
+    if [ -L "$nm" ]; then
+      echo "BRICK  node_modules ITSELF dangles (target gone — the checkout it linked to was reaped or moved) — Probity fails CLOSED on config load; every gated tool blocks. Repair: re-link from a live primary: ln -s <primary>/node_modules node_modules. NEVER run pnpm install here."
+      echo "SUMMARY brick dangling=1 foreign=0 store=dangling"
+      return 0
+    fi
+    echo "brick: no node_modules at $root — an unprovisioned worktree bricks itself the moment probity.config.ts imports anything (provision: ln -s <primary>/node_modules node_modules)"
+    echo "SUMMARY brick dangling=0 foreign=0 store=absent"
+    return 0
+  fi
+  anchor="$(dirname "$nmphys")"
+  # A registered worktree of the same repo can NEST under the anchor (the
+  # leaf may register worktrees beneath the primary's own root), and a link
+  # into one is foreign wherever that worktree lives — reaping it is exactly
+  # the MODULE_NOT_FOUND this guard names. Enumerate the OTHER worktrees'
+  # physical roots once so classification can carve them out of the anchor.
+  local others="" w wphys
+  while IFS= read -r w; do
+    [ -n "$w" ] || continue
+    wphys="$(cd "$w" 2>/dev/null && pwd -P)" || continue
+    [ "$wphys" = "$anchor" ] && continue
+    # Only DESCENDANTS of the anchor need carving out — anything outside the
+    # anchor is already foreign by the base rule, and keeping an ANCESTOR
+    # worktree (the primary, seen from a nested worktree) in this list would
+    # brand the nested store's own local targets foreign.
+    case "$wphys" in "$anchor"/*) ;; *) continue ;; esac
+    others="$others$wphys
+"
+  done <<CBR_WTS
+$(git -C "$root" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+CBR_WTS
+  # Per-package stores (packages/*/node_modules etc.) are provisioned by the
+  # same linking and brick that package's toolchain just as hard; they share
+  # the root store's anchor because their links point into the same repo.
+  for store in "$nm" "$root"/packages/*/node_modules "$root"/adapters/*/node_modules; do
+    # A per-package store that is ITSELF a dangling symlink is a brick, not a
+    # skip — [ -d ] is false for it, and skipping would return the passing
+    # zero for exactly the broken toolchain this report names.
+    if [ -L "$store" ] && [ ! -e "$store" ]; then
+      echo "BRICK  ${store#"$root"/} ITSELF dangles (target gone) — that package's toolchain is dead. Repair: re-link it from a live primary. NEVER run pnpm install here."
+      dangling=$((dangling + 1)); continue
+    fi
+    [ -d "$store" ] || continue
+  for entry in "$store"/* "$store"/@*/*; do
+    [ -L "$entry" ] || continue
+    if ! phys="$(cd "$entry" 2>/dev/null && pwd -P)"; then
+      echo "BRICK  ${entry#"$root"/} DANGLES — Probity fails CLOSED on config load; every gated tool blocks. Repair: re-point it at an intact .pnpm store (path suffix after .pnpm/ is identical), or re-link the whole dir from the primary: ln -s <primary>/node_modules node_modules. NEVER run pnpm install here — in a symlink-provisioned worktree it rewrites the PRIMARY's links (that is state 2)."
+      dangling=$((dangling + 1)); continue
+    fi
+    healthy=yes
+    case "$phys" in "$anchor"/*) ;; *) healthy=no ;; esac
+    if [ "$healthy" = yes ] && [ -n "$others" ]; then
+      while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        case "$phys" in "$w"|"$w"/*) healthy=no; break ;; esac
+      done <<<"$others"
+    fi
+    case "$healthy" in yes) ;; *)
+      echo "BRICK-IN-WAITING  ${entry#"$root"/} resolves OUTSIDE this store ($phys) — a pnpm install run in a worktree rewrote it; works today, dies MODULE_NOT_FOUND when that checkout is reaped. Repair: repoint it back into this repo's own .pnpm (path suffix after .pnpm/ is identical); do NOT reap the checkout it points into until repaired, and NEVER run pnpm install to fix it."
+      foreign=$((foreign + 1)) ;;
+    esac
+  done
+  done
+  echo "SUMMARY brick dangling=$dangling foreign=$foreign store=$nmphys"
   return 0
 }

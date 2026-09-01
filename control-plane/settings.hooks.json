@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh -c 'ANTHROPIC_MODEL=claude-sonnet-5; export ANTHROPIC_MODEL; if [ -x node_modules/.bin/probity ]; then node_modules/.bin/probity --agent claude-code; else npx --yes @nizos/probity@1.8.1 --agent claude-code; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/roborev-gate.sh",
+            "asyncRewake": true,
+            "timeout": 300,
+            "rewakeMessage": "RoboRev flagged the last commit (FAIL) - ADVISORY under the PR-boundary cadence: read the finding now; fix now only if a later commit would compound it, otherwise carry it to the PR boundary. Respond+close happens AT THE PR BOUNDARY, where the branch review (roborev review --branch --base <integration>) is the sole source of actionable findings and every open job gets an explicit disposition - never silently skipped. Round cap: 3 fix rounds TOTAL in the merge range (the merge gate counts every review-fix commit; the escalation ruling records chain judgment), then judgment exit: decline with recorded reasoning surfaced to the human, or record an escalation ruling (git config branch.<branch>.cbrEscalation).",
+            "rewakeSummary": "RoboRev FAIL on last commit"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/roborev-session-sweep.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/post-compact-reground.sh",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  },
+  "autoCompactWindow": 350000,
+  "autoCompactEnabled": true,
+  "autoCompactThreshold": 0.85
+}

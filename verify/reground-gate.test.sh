@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# Regression test for the post-compaction re-ground hook's composed payload.
-# Proves, against a throwaway fixture repo: the four role paths (orchestrator /
-# workstream / missing Run type / no plan) select the right core sections, and
-# the hook survives a payload far past the OS per-argument limit (a giant
-# findings.md must not kill the JSON emission — the re-ground is load-bearing).
+# Regression test for the post-compaction re-ground hook's DIET payload.
+# Proves, against a throwaway fixture repo: the payload carries the house
+# rules, the contract, and the ledger tail WHOLE, lists the law files as
+# POINTERS (their bodies must NOT ride along), selects role-specific pointers
+# from the plan's Run type, stays under the stated byte budget on a
+# realistically-sized fixture, and survives a findings.md far past ARG_MAX.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-hook_src="$here/../harness/hooks/post-compact-reground.sh"
+hook_src="$here/../control-plane/hooks/post-compact-reground.sh"
 [ -f "$hook_src" ] || { echo "reground-gate: hook not found at $hook_src" >&2; exit 2; }
+
+# runs inside pre-commit hooks whose GIT_* env would poison the fixture repo
+while read -r v; do unset "$v"; done < <(env | sed -nE 's/^(GIT_[A-Z_]*|GITHEAD_[0-9a-f]*)=.*/\1/p')
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -21,7 +25,7 @@ git -C "$tmp" init -q
 for f in policy strand reviews judgment build-loop GLOSSARY; do
   echo "$f law CORE-CANARY-$f" > "$tmp/skills/claude-controlled-build-run/references/core/$f.md"
 done
-for f in solo fleet captain; do
+for f in solo fleet; do
   echo "$f mode MODE-CANARY-$f" > "$tmp/skills/claude-controlled-build-run/references/core/modes/$f.md"
 done
 echo "claude adapter ADAPTER-CANARY" > "$tmp/skills/claude-controlled-build-run/references/claude.md"
@@ -40,120 +44,92 @@ payload() { # run the hook in the fixture; print the WHOLE injected context
     | jq -r '.hookSpecificOutput.additionalContext'
 }
 
-headers() { # just the === section headers, for the role-selection cases
-  payload | grep '^=== ' || true
+expect_body() { # $1 = case name, $2 = string that must be IN the payload
+  payload | grep -qF "$2" || bad "$1: payload does not contain '$2'"
 }
 
-# Headers alone prove only that the hook ANNOUNCED a section. A hook that emits
-# the header and zero bytes of the file passes every header assertion — proven by
-# mutation on 2026-08-27, when replacing the injected body with an empty string
-# left the whole suite green. So each injected file also carries a content canary
-# that must appear in the full payload.
-expect_body() { # $1 = case name, $2 = canary that must be IN the payload
-  payload | grep -qF "$2" || bad "$1: payload announced sections but does not contain '$2'"
-}
-
-expect_no_body() { # $1 = case name, $2 = canary that must NOT be in the payload
+expect_no_body() { # $1 = case name, $2 = string that must NOT be in the payload
   payload | grep -qF "$2" && bad "$1: payload unexpectedly contains '$2'"
   return 0
 }
 
-expect() { # $1 = case name, $2 = headers, $3 = must-contain regex, $4 = must-NOT-contain regex
-  printf '%s' "$2" | grep -qE "$3" || bad "$1: missing section matching '$3'"
-  if [ -n "$4" ]; then
-    printf '%s' "$2" | grep -qE "$4" && bad "$1: unexpected section matching '$4'"
-  fi
-  return 0
-}
-
+# --- orchestrator: house rules + contract + ledger whole; law as pointers ----
 printf '# plan PLAN-CANARY\n**Run type:** orchestrator\n' > "$tmp/task_plan.md"
 echo "findings FINDINGS-CANARY" > "$tmp/findings.md"
-echo "progress PROGRESS-CANARY" > "$tmp/progress.md"
-h="$(headers)"
-expect orchestrator "$h" 'CBR core policy' ''
-expect orchestrator "$h" 'fleet mode' ''
-expect orchestrator "$h" 'captain mode' ''
-expect orchestrator "$h" 'ACTIVE PLAN' ''
-expect orchestrator "$h" 'CBR core (policy|strand)' 'build loop|solo mode'
-expect orchestrator "$h" 'cyclomatic-complexity SKILL' ''
-expect_body orchestrator COMPLEXITY-CANARY
-expect_body orchestrator TDD-CANARY
-expect_body orchestrator ROUTER-CANARY
-expect_body orchestrator ENGINEERING-CANARY
-expect_body orchestrator CORE-CANARY-policy
-expect_body orchestrator CORE-CANARY-strand
-expect_body orchestrator CORE-CANARY-reviews
-expect_body orchestrator CORE-CANARY-judgment
-expect_body orchestrator ADAPTER-CANARY
-expect_body orchestrator MODE-CANARY-fleet
-expect_body orchestrator MODE-CANARY-captain
-expect_no_body orchestrator MODE-CANARY-solo
-expect_no_body orchestrator CORE-CANARY-build-loop
+{ echo "LEDGER-HEAD-CANARY"; printf 'old line %s\n' $(seq 1 200); echo "progress PROGRESS-TAIL-CANARY"; } > "$tmp/progress.md"
+expect_body orchestrator CONSTITUTION-CANARY
+expect_body orchestrator AGENTS-CANARY
 expect_body orchestrator PLAN-CANARY
 expect_body orchestrator FINDINGS-CANARY
-expect_body orchestrator PROGRESS-CANARY
-expect_body orchestrator CORE-CANARY-GLOSSARY
-expect_body orchestrator CONSTITUTION-CANARY
-expect_body orchestrator VISION-CANARY
-expect_body orchestrator AGENTS-CANARY
+expect_body orchestrator PROGRESS-TAIL-CANARY
+expect_no_body orchestrator LEDGER-HEAD-CANARY   # the ledger rides as a TAIL, not whole
+# law files are pointers: the paths appear, the bodies must not
+expect_body orchestrator "core/policy.md"
+expect_body orchestrator "modes/fleet.md"
+expect_no_body orchestrator "build-loop.md — "
+expect_no_body orchestrator CORE-CANARY-policy
+expect_no_body orchestrator CORE-CANARY-build-loop
+expect_no_body orchestrator MODE-CANARY-fleet
+expect_no_body orchestrator MODE-CANARY-solo
+expect_no_body orchestrator ROUTER-CANARY
+expect_no_body orchestrator ENGINEERING-CANARY
+expect_no_body orchestrator VISION-CANARY
+expect_no_body orchestrator TDD-CANARY
+expect_no_body orchestrator COMPLEXITY-CANARY
+expect_no_body orchestrator ADAPTER-CANARY
 
+# --- workstream: role flips the pointer set ---------------------------------
 printf '# plan PLAN-CANARY\n**Run type:** workstream\n' > "$tmp/task_plan.md"
-h="$(headers)"
-expect workstream "$h" 'build loop' ''
-expect workstream "$h" 'solo mode' ''
-expect workstream "$h" 'Claude leaf mechanisms' ''
-expect workstream "$h" 'CBR core policy' 'fleet mode|captain mode'
-expect workstream "$h" 'cyclomatic-complexity SKILL' ''
-expect_body workstream COMPLEXITY-CANARY
-expect_body workstream TDD-CANARY
-expect_body workstream CORE-CANARY-build-loop
-expect_body workstream CORE-CANARY-policy
-expect_body workstream ADAPTER-CANARY
-expect_body workstream MODE-CANARY-solo
-expect_no_body workstream MODE-CANARY-fleet
-expect_no_body workstream MODE-CANARY-captain
-expect_body workstream PLAN-CANARY
-expect_body workstream FINDINGS-CANARY
-expect_body workstream PROGRESS-CANARY
-expect_body workstream CORE-CANARY-GLOSSARY
-expect_body workstream CORE-CANARY-reviews
-expect_body workstream CORE-CANARY-strand
-expect_body workstream CORE-CANARY-judgment
-expect_body workstream CONSTITUTION-CANARY
-expect_body workstream VISION-CANARY
-expect_body workstream AGENTS-CANARY
+expect_body workstream "core/build-loop.md"
+expect_body workstream "modes/solo.md"
+expect_no_body workstream "modes/fleet.md"
+expect_body workstream "test-driven-development/SKILL.md"
+expect_body workstream "cyclomatic-complexity/SKILL.md"
+expect_no_body workstream CORE-CANARY-build-loop
+expect_no_body workstream MODE-CANARY-solo
 
+# --- a fleet builder's branch never receives solo merge law -----------------
+git -C "$tmp" checkout -q -b stream/fixture-probe
+expect_body stream-builder "core/build-loop.md"
+expect_no_body stream-builder "modes/solo.md"
+git -C "$tmp" checkout -q -b ordinary-workstream
+expect_body ordinary-branch "modes/solo.md"
+
+# --- missing Run type defaults to workstream --------------------------------
 printf '# plan PLAN-CANARY\nno run type line\n' > "$tmp/task_plan.md"
-h="$(headers)"
-expect default-workstream "$h" 'build loop' 'fleet mode|captain mode'
+expect_body default-workstream "core/build-loop.md"
+expect_no_body default-workstream "modes/fleet.md"
 
+# --- no plan: no contract, no ledger, no law pointers beyond the router -----
 rm -f "$tmp/task_plan.md"
-h="$(headers)"
-expect no-plan "$h" 'SKILL\.md' 'CBR core|ACTIVE PLAN'
-# mid-build only: no plan, no complexity skill (same rule the TDD skill follows)
-expect no-plan "$h" 'SKILL\.md' 'cyclomatic-complexity'
-expect_no_body no-plan COMPLEXITY-CANARY
-expect_no_body no-plan TDD-CANARY
-expect_body no-plan ROUTER-CANARY
-expect_body no-plan ENGINEERING-CANARY
-expect_no_body no-plan CORE-CANARY-policy
-expect_no_body no-plan ADAPTER-CANARY
+expect_body no-plan CONSTITUTION-CANARY
+expect_body no-plan AGENTS-CANARY
+expect_body no-plan "claude-controlled-build-run/SKILL.md"
 expect_no_body no-plan PLAN-CANARY
 expect_no_body no-plan FINDINGS-CANARY
-expect_no_body no-plan PROGRESS-CANARY
-expect_no_body no-plan CORE-CANARY-GLOSSARY
-expect_no_body no-plan CORE-CANARY-build-loop
-expect_no_body no-plan MODE-CANARY-solo
-expect_no_body no-plan MODE-CANARY-fleet
-expect_no_body no-plan CORE-CANARY-strand
-expect_no_body no-plan CORE-CANARY-reviews
-expect_no_body no-plan CORE-CANARY-judgment
-expect_no_body no-plan MODE-CANARY-captain
-expect_body no-plan CONSTITUTION-CANARY
-expect_body no-plan VISION-CANARY
-expect_body no-plan AGENTS-CANARY
+expect_no_body no-plan PROGRESS-TAIL-CANARY
+expect_no_body no-plan "core/policy.md"
 
-# Oversized payload: a findings.md far past ARG_MAX must not break emission.
+# --- byte budget: a realistically-sized fixture stays under the stated diet --
+budget="$(sed -nE 's/^REGROUND_BUDGET_BYTES=([0-9]+).*/\1/p' "$hook_src")"
+[ -n "$budget" ] || bad "budget: hook no longer states REGROUND_BUDGET_BYTES"
+python3 - "$tmp" <<'PY'
+import sys
+t = sys.argv[1]
+def doc(path, size, tag):
+    body = (tag + "\n") + ("x" * 72 + "\n") * (size // 73)
+    open(f"{t}/{path}", "w").write(body)
+doc("task_plan.md", 26000, "# plan PLAN-CANARY\n**Run type:** workstream")
+doc("CONSTITUTION.md", 2100, "constitution CONSTITUTION-CANARY")
+doc("AGENTS.md", 3700, "agents AGENTS-CANARY")
+doc("findings.md", 1400, "findings FINDINGS-CANARY")
+doc("progress.md", 40000, "progress")  # long log; only the tail may ride
+PY
+bytes="$(payload | wc -c | tr -d ' ')"
+[ "$bytes" -le "$budget" ] || \
+  bad "budget: realistic payload is ${bytes}B, over the stated ${budget}B diet"
+
+# --- oversized findings.md far past ARG_MAX must not break emission ---------
 printf '# plan PLAN-CANARY\n**Run type:** workstream\n' > "$tmp/task_plan.md"
 python3 -c "print('OVERSIZED-FINDINGS-CANARY' + 'x' * 1500000)" > "$tmp/findings.md" 2>/dev/null \
   || perl -e "print 'OVERSIZED-FINDINGS-CANARY', 'x' x 1500000" > "$tmp/findings.md"
@@ -172,5 +148,5 @@ case "$ctx" in
   *) bad "oversized: a giant findings.md displaced the plan from the payload" ;;
 esac
 
-[ "$fail" -eq 0 ] && echo "reground-gate: all payload cases pass"
+[ "$fail" -eq 0 ] && echo "reground-gate: all diet payload cases pass"
 exit "$fail"

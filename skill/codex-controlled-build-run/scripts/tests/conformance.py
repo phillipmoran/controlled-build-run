@@ -2,7 +2,6 @@
 """Prove the Codex leaf conforms to the shared CBR core and owns only Codex mechanics."""
 from __future__ import annotations
 
-import hashlib
 import re
 import subprocess
 import sys
@@ -12,7 +11,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve()
 LEAF = HERE.parents[2]
 EMBEDDED_CORE = LEAF / "references" / "cbr-core"
-CODEX_COVERAGE = LEAF / "references" / "CODEX-COVERAGE.md"
 
 
 def fail(message: str) -> None:
@@ -20,11 +18,10 @@ def fail(message: str) -> None:
 
 
 raw_args = sys.argv[1:]
-STRICT_SOURCE_IDENTITY = "--canonical-source-repo" in raw_args
-positional_args = [arg for arg in raw_args if arg != "--canonical-source-repo"]
+positional_args = list(raw_args)
 unknown_flags = [arg for arg in positional_args if arg.startswith("-")]
 if unknown_flags or len(positional_args) > 1:
-    fail("usage: conformance.py [--canonical-source-repo] [canonical-core-path]")
+    fail("usage: conformance.py [canonical-core-path]")
 
 
 def canonical_core() -> Path:
@@ -64,23 +61,29 @@ def readable_leaf_text() -> str:
 source_core = canonical_core()
 if not source_core.is_dir():
     fail(f"canonical core is missing: {source_core}")
-if not EMBEDDED_CORE.is_dir():
-    fail("embedded core snapshot is missing from references/cbr-core")
-
-source_paths = markdown_paths(source_core)
-embedded_paths = markdown_paths(EMBEDDED_CORE)
-if source_paths != embedded_paths:
-    fail(
-        "embedded core file set differs from canonical core: "
-        f"missing={sorted(map(str, source_paths - embedded_paths))} "
-        f"extra={sorted(map(str, embedded_paths - source_paths))}"
-    )
-for relative in sorted(source_paths):
-    if (source_core / relative).read_bytes() != (EMBEDDED_CORE / relative).read_bytes():
-        fail(f"embedded core drifted from canonical: {relative}")
+# The canonical repo carries no embedded snapshot (deleted 2026-08-31; kit
+# export materializes it). When one exists — an installed kit leaf — it must
+# be byte-exact against the canonical core; when it does not, the canonical
+# core itself is the text under test.
+if EMBEDDED_CORE.is_dir():
+    source_paths = markdown_paths(source_core)
+    embedded_paths = markdown_paths(EMBEDDED_CORE)
+    if source_paths != embedded_paths:
+        fail(
+            "embedded core file set differs from canonical core: "
+            f"missing={sorted(map(str, source_paths - embedded_paths))} "
+            f"extra={sorted(map(str, embedded_paths - source_paths))}"
+        )
+    for relative in sorted(source_paths):
+        if (source_core / relative).read_bytes() != (EMBEDDED_CORE / relative).read_bytes():
+            fail(f"embedded core drifted from canonical: {relative}")
+    core_dir = EMBEDDED_CORE
+else:
+    source_paths = markdown_paths(source_core)
+    core_dir = source_core
 
 core_text = "\n".join(
-    (EMBEDDED_CORE / relative).read_text(encoding="utf-8") for relative in sorted(embedded_paths)
+    (core_dir / relative).read_text(encoding="utf-8") for relative in sorted(markdown_paths(core_dir))
 )
 core_primitives = (
     ".claude/",
@@ -121,102 +124,6 @@ flat_core = re.sub(r"\s+", " ", core_text).replace("*", "").replace("`", "")
 for law in required_laws:
     if law not in flat_core:
         fail(f"shared core lost source-strength law: {law}")
-
-coverage = (EMBEDDED_CORE / "COVERAGE.md").read_text(encoding="utf-8")
-if re.search(r"^\|[^|]+\|\s*pending-P\d+\s*\|", coverage, re.MULTILINE):
-    fail("coverage map still contains a pending disposition")
-for mapped in re.findall(r"core:([A-Za-z0-9_./-]+\.md)", coverage):
-    if not (EMBEDDED_CORE / mapped).is_file():
-        fail(f"coverage maps to a missing core file: {mapped}")
-
-source_skill = canonical_source_skill()
-if source_skill is not None:
-    coverage_law = coverage.split("Acceptance sources", 1)[0]
-    covered: set[int] = set()
-    for start, end in re.findall(r"\((\d+)[–-](\d+)\)", coverage_law):
-        covered.update(range(int(start), int(end) + 1))
-    orphaned = [
-        number
-        for number, line in enumerate(source_skill.read_text(encoding="utf-8").splitlines(), 1)
-        if line.strip() and number not in covered
-    ]
-    if orphaned:
-        fail(f"coverage map leaves nonblank source lines unaccounted: {orphaned[:12]}")
-
-if not CODEX_COVERAGE.is_file():
-    fail("Codex provider-mechanical coverage map is missing")
-codex_coverage = CODEX_COVERAGE.read_text(encoding="utf-8")
-commit_match = re.search(r"^- commit: `([0-9a-f]{40})`$", codex_coverage, re.MULTILINE)
-path_match = re.search(r"^- path: `([^`]+)`$", codex_coverage, re.MULTILINE)
-lines_match = re.search(r"^- lines: `(\d+)`$", codex_coverage, re.MULTILINE)
-sha_match = re.search(r"^- sha256: `([0-9a-f]{64})`$", codex_coverage, re.MULTILINE)
-if not all((commit_match, path_match, lines_match, sha_match)):
-    fail("Codex coverage source identity is incomplete")
-source_line_count = int(lines_match.group(1))
-section_map = codex_coverage.split("## Complete section disposition", 1)[1].split(
-    "## Provider-mechanical destination inventory", 1
-)[0]
-if re.search(r"^\|[^|]+\|[^|]*pending", section_map, re.MULTILINE | re.IGNORECASE):
-    fail("Codex coverage map contains a pending disposition")
-ranges = [(int(start), int(end)) for start, end in re.findall(r"^\| (\d+)[–-](\d+) \|", section_map, re.MULTILINE)]
-counts = {number: 0 for number in range(1, source_line_count + 1)}
-for start, end in ranges:
-    for number in range(start, end + 1):
-        if number in counts:
-            counts[number] += 1
-bad_tiling = [number for number, count in counts.items() if count != 1]
-if bad_tiling:
-    fail(f"Codex source coverage does not tile every line exactly once: {bad_tiling[:12]}")
-for kind, destination in re.findall(r"(core|leaf):([A-Za-z0-9_./-]+)", section_map):
-    target = (EMBEDDED_CORE if kind == "core" else LEAF) / destination
-    if not target.is_file():
-        fail(f"Codex section coverage maps to a missing destination: {kind}:{destination}")
-
-witness_rows = re.findall(
-    r"^\| (C\d+) \|.*\| leaf:([A-Za-z0-9_./-]+) \| `([^`]+)` \|$",
-    codex_coverage,
-    re.MULTILINE,
-)
-expected_witness_ids = {f"C{number:02d}" for number in range(1, 24)}
-actual_witness_ids = {row[0] for row in witness_rows}
-if actual_witness_ids != expected_witness_ids:
-    fail(
-        "Codex provider-mechanical inventory is incomplete: "
-        f"missing={sorted(expected_witness_ids - actual_witness_ids)} "
-        f"extra={sorted(actual_witness_ids - expected_witness_ids)}"
-    )
-for witness_id, destination, witness in witness_rows:
-    target = LEAF / destination
-    if not target.is_file():
-        fail(f"Codex inventory {witness_id} maps to a missing leaf file: {destination}")
-    if witness not in target.read_text(encoding="utf-8"):
-        fail(f"Codex inventory {witness_id} lost its required witness in {destination}: {witness}")
-
-# Repository history is deliberately opt-in: a portable target can reproduce
-# every path and marker from the source repository without carrying its Git
-# objects. The cockpit's own gate passes --canonical-source-repo explicitly.
-if STRICT_SOURCE_IDENTITY:
-    source_repo: Path | None = None
-    for ancestor in HERE.parents:
-        if (ancestor / ".git").exists() and LEAF.resolve() == (
-            ancestor / "skills" / "codex-controlled-build-run"
-        ).resolve():
-            source_repo = ancestor
-            break
-    if source_repo is None:
-        fail("canonical source mode requires the leaf at <repo>/skills/codex-controlled-build-run")
-    source_spec = f"{commit_match.group(1)}:{path_match.group(1)}"
-    shown = subprocess.run(
-        ["git", "-C", str(source_repo), "show", source_spec],
-        capture_output=True,
-        check=False,
-    )
-    if shown.returncode != 0:
-        fail(f"declared pre-conversion Codex source cannot be read: {source_spec}")
-    if len(shown.stdout.decode("utf-8").splitlines()) != source_line_count:
-        fail("declared pre-conversion Codex source line count is wrong")
-    if hashlib.sha256(shown.stdout).hexdigest() != sha_match.group(1):
-        fail("declared pre-conversion Codex source hash is wrong")
 
 leaf_text = readable_leaf_text()
 other_leaf_primitives = (
@@ -303,41 +210,25 @@ for witness in (
 router = (LEAF / "SKILL.md").read_text(encoding="utf-8")
 if len(router.splitlines()) > 250:
     fail(f"SKILL.md is not a short router ({len(router.splitlines())} lines)")
+for witness in ("`CBR_CORE`", "`skills/cbr-core/`", "`references/cbr-core/`"):
+    if witness not in router:
+        fail(f"router does not name its shared-core resolver: {witness}")
 for relative in (
-    "references/cbr-core/policy.md",
-    "references/cbr-core/strand.md",
-    "references/cbr-core/build-loop.md",
-    "references/cbr-core/reviews.md",
-    "references/cbr-core/judgment.md",
-    "references/cbr-core/GLOSSARY.md",
-    "references/cbr-core/modes/solo.md",
-    "references/cbr-core/modes/fleet.md",
-    "references/cbr-core/modes/captain.md",
-    "references/cbr-core/acceptance/checklist.md",
+    "$CBR_CORE/policy.md",
+    "$CBR_CORE/strand.md",
+    "$CBR_CORE/build-loop.md",
+    "$CBR_CORE/reviews.md",
+    "$CBR_CORE/judgment.md",
+    "$CBR_CORE/GLOSSARY.md",
+    "$CBR_CORE/modes/solo.md",
+    "$CBR_CORE/modes/fleet.md",
     "references/acceptance.md",
-    "references/CODEX-COVERAGE.md",
 ):
     if relative not in router:
         fail(f"router does not route to required component: {relative}")
 
-core_leaf_rows = set(
-    re.findall(
-        r"\*\*([A-Z]\d+[a-z]?)\*\* \(leaf-row\)",
-        (EMBEDDED_CORE / "acceptance" / "checklist.md").read_text(encoding="utf-8"),
-    )
-)
-leaf_acceptance = (LEAF / "references" / "acceptance.md").read_text(encoding="utf-8")
-leaf_rows = set(re.findall(r"^- \*\*([A-Z]\d+[a-z]?)\*\*", leaf_acceptance, re.MULTILINE))
-if leaf_rows != core_leaf_rows:
-    fail(
-        "Codex leaf acceptance rows do not exactly satisfy core leaf-row set: "
-        f"missing={sorted(core_leaf_rows - leaf_rows)} extra={sorted(leaf_rows - core_leaf_rows)}"
-    )
-
 print(
     "CONFORMANCE-PASS "
-    f"core_files={len(source_paths)} coverage_source={'yes' if source_skill else 'portable'} "
-    f"history={'canonical' if STRICT_SOURCE_IDENTITY else 'portable'} "
-    f"codex_witnesses={len(witness_rows)} leaf_rows={len(leaf_rows)} "
-    f"router_lines={len(router.splitlines())}"
+    f"core_files={len(source_paths)} "
+       f"router_lines={len(router.splitlines())}"
 )

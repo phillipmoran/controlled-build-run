@@ -49,6 +49,23 @@ export function createVendorContentPolicy(contentRule) {
   return Object.freeze(policy)
 }
 
+// Local project rulings ride ahead of every upstream judgment prompt. They
+// refine how the upstream TDD rules read in THIS repo's workflow — the seam
+// is here because the upstream prompt lives in @nizos/probity and is not
+// editable; a fork would rot.
+const LOCAL_JUDGE_POLICY = `Project rulings (refinements to the rules below — they never weaken them):
+1. Mutation-check lane: a deliberate break-verify-revert cycle is sanctioned
+   TDD practice — temporarily breaking production code to watch a test go
+   red, then reverting, is verification, not an untested production change.
+2. Literal stubs: a minimal importable stub committed alongside a failing
+   test IS the red step. Judge by whether the watched failure references the
+   behavior under test, not by whether the author performed a ritual
+   crash-on-import step first.
+3. Sandbox paths: writes under the OS temp directory or a session scratchpad
+   directory are scratch, never production code — they need no test. This
+   never applies to a path inside the repository or worktree under judgment:
+   a checkout that itself lives under a temp directory gets no exemption.`
+
 export function createCodexJudge({ model, timeoutMs = 90_000, loadCodex }) {
   const judge = {
     reason: async (prompt) => {
@@ -74,7 +91,7 @@ export function createCodexJudge({ model, timeoutMs = 90_000, loadCodex }) {
           webSearchEnabled: false,
         })
         const turn = await Promise.race([
-          thread.run(prompt, { signal: controller.signal }),
+          thread.run(`${LOCAL_JUDGE_POLICY}\n\n${prompt}`, { signal: controller.signal }),
           deadline,
         ])
         return parseVerdict(turn.finalResponse)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# smoke.sh — arming smoke test for the controlled-build-run harness.
+# smoke.sh — arming smoke test for the controlled-build-run control plane.
 #
 # Run this from the ROOT of the TARGET repo AFTER following SETUP.md. It checks
 # the static facts a shell can verify: prerequisites on PATH, the gates wired,
@@ -40,7 +40,7 @@ settings=".claude/settings.json"
 if [ -f "$settings" ] && jq -e '.. | objects | select(.command? // "" | test("probity"))' "$settings" >/dev/null 2>&1; then
   ok "probity PreToolUse command found in $settings"
 else
-  bad "no probity command in $settings — merge harness/settings.hooks.json"
+  bad "no probity command in $settings — merge control-plane/settings.hooks.json"
 fi
 if [ -f probity.config.ts ]; then ok "probity.config.ts present at repo root"; else bad "probity.config.ts missing at repo root"; fi
 
@@ -59,12 +59,12 @@ fi
 echo "[4] pre-commit gate armed"
 pcg="$(git rev-parse --git-path hooks/pre-commit 2>/dev/null)"
 [ -f "$pcg" ] && ok "git pre-commit hook installed" || bad "git pre-commit hook NOT installed (run: pre-commit install  — or  uv run pre-commit install)"
-if [ -f .pre-commit-config.yaml ] && grep -q 'roborev-clean' .pre-commit-config.yaml; then
-  ok "roborev-clean entry present in .pre-commit-config.yaml"
+if [ -f .pre-commit-config.yaml ] && grep -q 'merge-review-gate' .pre-commit-config.yaml; then
+  ok "merge-review-gate entry present in .pre-commit-config.yaml (per-commit reviews advisory)"
 else
-  bad "roborev-clean entry missing from .pre-commit-config.yaml (the close-every-review wall)"
+  bad "merge-review-gate entry missing from .pre-commit-config.yaml (the merge-boundary review wall)"
 fi
-if [ -x scripts/roborev-clean-gate.sh ]; then ok "scripts/roborev-clean-gate.sh present + executable"; else bad "scripts/roborev-clean-gate.sh missing or not executable (chmod +x)"; fi
+if [ -x scripts/merge-review-gate.sh ]; then ok "scripts/merge-review-gate.sh present + executable"; else bad "scripts/merge-review-gate.sh missing or not executable (chmod +x)"; fi
 
 echo "[5] post-compaction reground hook"
 rg=".claude/hooks/post-compact-reground.sh"

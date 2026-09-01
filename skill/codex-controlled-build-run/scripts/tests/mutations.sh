@@ -43,7 +43,7 @@ expect_canonical_identity_red() {
   case_skill="$case_repo/skills/codex-controlled-build-run"
   rsync -a --delete "$SKILL/" "$case_skill/"
   "$@" "$case_skill"
-  if python3 "$case_skill/scripts/tests/conformance.py" --canonical-source-repo \
+  if python3 "$case_skill/scripts/tests/conformance.py" \
       "$case_repo/skills/cbr-core" >/dev/null 2>&1; then
     echo "MUTATION-SURVIVED $name" >&2
     exit 1
@@ -55,7 +55,7 @@ expect_portable_source_layout_green() {
   local case_repo="$TMP/portable-source-layout"
   mkdir -p "$case_repo/skills"
   git -C "$case_repo" init --quiet
-  printf '{"name":"reference-host","private":true}\n' >"$case_repo/package.json"
+  printf '{"name":"example-host","private":true}\n' >"$case_repo/package.json"
   cp -R "$SKILL" "$case_repo/skills/codex-controlled-build-run"
   cp -R "$CANONICAL_CORE" "$case_repo/skills/cbr-core"
   if ! python3 "$case_repo/skills/codex-controlled-build-run/scripts/tests/conformance.py" \
@@ -71,11 +71,6 @@ import sys
 p=sys.argv[1]; s=open(p).read(); open(p,'w').write(s.replace('--agent codex','--agent claude-code'))
 PY
 }
-mut_branch() { python3 - "$1/templates/roborev-clean-gate.sh" <<'PY'
-import sys
-p=sys.argv[1]; s=open(p).read(); open(p,'w').write(s.replace('--branch "$branch"',''))
-PY
-}
 mut_sessionstart_compact() { python3 - "$1/templates/codex-hooks.json" <<'PY'
 import json,sys
 p=sys.argv[1]; d=json.load(open(p)); d['hooks'].pop('PostCompact'); moved=d['hooks'].pop('UserPromptSubmit')[0]; moved['matcher']='^compact$'; d['hooks']['SessionStart'].append(moved); json.dump(d,open(p,'w'))
@@ -89,8 +84,6 @@ PY
 mut_ephemeral() { python_mutate "$1/scripts/cbr-codex.sh" 'nohup codex exec --sandbox workspace-write' 'nohup codex exec --ephemeral --sandbox workspace-write'; }
 mut_sandbox() { python_mutate "$1/scripts/cbr-codex.sh" '--sandbox workspace-write' '--sandbox danger-full-access'; }
 mut_doctor_jq() { python_mutate "$1/scripts/cbr-codex.sh" 'python3 git node jq' 'python3 git node'; }
-mut_show() { python_mutate "$1/templates/roborev-clean-gate.sh" 'roborev show "$head_sha"' 'roborev list'; }
-mut_null() { python_mutate "$1/templates/roborev-clean-gate.sh" 'if value is None:' 'if False and value is None:'; }
 mut_done() { python_mutate "$1/scripts/captain-watch-codex.sh" 'if [ "$done1" != "$done0" ]' 'if false'; }
 mut_provision() { python_mutate "$1/scripts/cbr-codex.sh" 'provision PASS not recorded in this worktree' 'provision state ignored'; }
 mut_adapter_tdd() { python_mutate "$1/templates/cbr-codex.json" '    "adapters/**/*.ts",' ''; }
@@ -103,30 +96,29 @@ mut_doctor_probity_runtime() { python_mutate "$1/scripts/cbr-codex.sh" '"$root/p
 mut_stale_probity_upgrade() { python_mutate "$1/scripts/cbr-codex.sh" 'probity_config_behavior_check "$target"' 'true'; }
 mut_adapter_probe_scope() { python_mutate "$1/templates/probe-prompt.md" 'adapters/**/*.ts' 'adapters/**'; }
 mut_adapter_config_scope() { python_mutate "$1/templates/cbr-codex.json" '    "adapters/**/*.ts",' '    "adapters/**/*.tsx",'; }
-mut_core_snapshot() { python_mutate "$1/references/cbr-core/policy.md" 'Two jobs, in order' 'One job, condensed'; }
-mut_router_route() { python_mutate "$1/SKILL.md" 'references/cbr-core/modes/captain.md' 'references/modes/captain.md'; }
-mut_leaf_row() { python_mutate "$1/references/acceptance.md" '- **A3**' '- **A30**'; }
+mut_core_snapshot() {
+  # The canonical leaf carries no embedded snapshot; plant one from the
+  # canonical core, then drift it — conformance must byte-gate any snapshot
+  # that IS present (the installed-leaf layout).
+  cp -R "$CANONICAL_CORE" "$1/references/cbr-core"
+  python_mutate "$1/references/cbr-core/policy.md" 'deterministic' 'determinstic'
+}
+mut_router_route() { python_mutate "$1/SKILL.md" '$CBR_CORE/modes/fleet.md' 'references/modes/fleet.md'; }
 mut_other_provider() { python3 - "$1/SKILL.md" <<'PY'
 import sys
 p=sys.argv[1]; open(p,'a').write('\n' + '.' + 'claude/' + '\n')
 PY
 }
 mut_role_payload() { python_mutate "$1/templates/hooks/post-compact-reground.sh" '$core/modes/fleet.md' '$core/build-loop.md'; }
-mut_codex_inventory() { python_mutate "$1/references/CODEX-COVERAGE.md" '| C06 | Persisted detached builder | leaf:SKILL.md | `codex exec --json` |' ''; }
-mut_codex_source_commit() { python_mutate "$1/references/CODEX-COVERAGE.md" '216fc688e5ddedbc38b931da55a7bbca565bd9fd' '0000000000000000000000000000000000000000'; }
-mut_codex_source_path() { python_mutate "$1/references/CODEX-COVERAGE.md" 'skills/codex-controlled-build-run/SKILL.md' 'skills/codex-controlled-build-run/MISSING.md'; }
 
 "$VERIFY" "$SKILL" >/dev/null
-python3 "$CONFORMANCE" --canonical-source-repo "$CANONICAL_CORE" >/dev/null
+python3 "$CONFORMANCE" "$CANONICAL_CORE" >/dev/null
 expect_red wrong-probity-host mut_host
-expect_red unscoped-reviews mut_branch
 expect_red reground-on-sessionstart-compact mut_sessionstart_compact
 expect_red truncated-additional-context mut_context
 expect_red ephemeral-builder mut_ephemeral
 expect_red danger-full-access mut_sandbox
 expect_red doctor-without-jq mut_doctor_jq
-expect_red missing-per-sha-review mut_show
-expect_red null-not-empty mut_null
 expect_red missing-done-hash-latch mut_done
 expect_red launch-without-provision mut_provision
 expect_red adapter-without-tdd mut_adapter_tdd
@@ -141,11 +133,7 @@ expect_red broad-adapter-probe-scope mut_adapter_probe_scope
 expect_red adapter-config-probe-drift mut_adapter_config_scope
 expect_red drifted-core-snapshot mut_core_snapshot
 expect_red missing-router-route mut_router_route
-expect_red wrong-leaf-row-set mut_leaf_row
 expect_red other-provider-leaf-leak mut_other_provider
 expect_red crossed-role-payload mut_role_payload
-expect_red missing-codex-provider-inventory mut_codex_inventory
-expect_canonical_identity_red invalid-codex-source-commit mut_codex_source_commit
-expect_canonical_identity_red invalid-codex-source-path mut_codex_source_path
 expect_portable_source_layout_green
 echo "MUTATION-SUMMARY red=$count survived=0 portable=1"

@@ -17,8 +17,8 @@ can't be delegated to a panelist.** So the synthesizer is whoever runs the revie
 plan:
 - **Builder (stream) plans → the ORCHESTRATOR synthesizes.** It authored the fleet, it
   dispatches the builder, it owns the merge — so it judges the panel on each stream plan.
-- **Orchestrator (fleet) plans → the CAPTAIN synthesizes.** The tier above reviews the tier
-  below's plan. (No captain in play? The orchestrator self-reviews its own fleet plan the
+- **Orchestrator (fleet) plans → the HUMAN is the synthesis seam.** The tier above reviews the
+  tier below's plan. (For its own fleet plan the orchestrator self-reviews the
   same way — a panel still beats one pass.)
 Each tier fusion-reviews the plans it is about to dispatch. The synthesizer stays *separate*
 from the panelists — never paste one panelist's output into another's prompt.

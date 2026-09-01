@@ -1,9 +1,9 @@
 # Claude leaf acceptance rows
 
-The complete acceptance contract is the shared checklist under
-`references/core/acceptance/` (checklist + scenarios + mutations) plus these
-provider-mechanical rows. IDs here MUST exactly equal the rows marked
-`leaf-row` in the shared checklist.
+These are the Claude provider-mechanical acceptance rows. (The neutral
+checklist they used to pair with was archived to the source repo's
+docs/archive/cbr-acceptance/ on 2026-08-31; the kit/verify battery is the
+executable acceptance source.)
 
 - **A3** — the worktree-safe pre-push hook denies a `stream/*` push unless
   `CBR_ALLOW_PUSH=1` (immune to `--dangerously-skip-permissions`, which drops
@@ -51,12 +51,8 @@ provider-mechanical rows. IDs here MUST exactly equal the rows marked
   fixed countdown or another session's `state`.
 - **G4** — dispatch and watch never separate: `cbr.sh launch` drops a
   needs-arm sentinel and prints the REQUIRED arm directive; `cbr.sh watch`
-  (armed immediately after launch, backgrounded as a tracked task — the bare
-  watcher FIRST, then `--watchdog --cycle <id>` with the cycle id the
-  watcher's armed line prints) clears it; `cbr.sh status` flags a
-  live-but-unwatched builder as **UNWATCHED**; the `--watchdog` dead-man
-  catches a dead watcher, and binding it to the cycle is what lets it retire
-  cleanly after DONE instead of paging.
+  (armed immediately after launch, backgrounded as a tracked task) clears
+  it; `cbr.sh status` flags a live-but-unwatched builder as **UNWATCHED**.
 - **K4** — temporary files are trap-cleaned; persistent watcher state stays
   under `.cbr-watch/` (gitignored) and archives at closeout with the stream's
   bookkeeping (`docs/streams/archive/<slug>/`).

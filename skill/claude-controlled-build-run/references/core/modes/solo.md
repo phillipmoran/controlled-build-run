@@ -5,7 +5,7 @@ Part of `cbr-core`, the provider-neutral CBR law.
 A **solo build** is the default mode: one strand (see `strand.md`), one
 session, building one plan. Everything in `policy.md`, `strand.md`,
 `build-loop.md`, `reviews.md`, and `judgment.md` applies as written; the
-fleet and captain tiers do not exist here.
+fleet tier does not exist here.
 
 What changes without the upper tiers:
 
@@ -30,16 +30,16 @@ What changes without the upper tiers:
   branch into main per `build-loop.md` step 9. Whether pushing main is gated
   on the human is a per-repo rule — check the repo's own law before
   pushing, and stop at the gate if one exists.
-- **Reviews still run at full strength.** Per-commit review, the
-  review-clean gate, phase checkpoints, and the closeout review are not
-  fleet features — they gate a solo strand identically. The plan-review
+- **Reviews still run at full strength.** Advisory per-commit review, the
+  merge review gate, phase checkpoints, and the closeout review are not
+  fleet features — they govern a solo strand identically. The plan-review
   gate (`reviews.md`) applies to a solo plan too when the work is
   non-trivial: review the plan before you spend the build on it.
 - **Escalation shrinks, discipline doesn't.** With no orchestrator watching
   from outside, the hooks and gates are the only supervision — which is
-  exactly the case the harness was built for. A solo builder that starts
+  exactly the case the control plane was built for. A solo builder that starts
   waiving gates because "no one is watching" has left the process.
 
 A single small fleet (one orchestrator, a couple of streams) sits between
-this and `modes/fleet.md`: the orchestrator exists but talks to the human
-directly, skipping the captain tier.
+this and `modes/fleet.md`: the orchestrator talks to the human directly —
+as every orchestrator does.

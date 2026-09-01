@@ -76,11 +76,6 @@ prompt_submit = [
 require(len(prompt_submit) == 1 and "post-compact-reground.sh" in prompt_submit[0].get("command", ""), "context-bearing prompt re-ground hook missing")
 require(prompt_submit[0].get("additionalContextLimit") == 0, "prompt re-ground truncates additionalContext")
 
-clean = (root / "templates/roborev-clean-gate.sh").read_text()
-require(clean.count('--branch "$branch"') >= 2, "RoboRev lists are not branch scoped")
-require('roborev show "$head_sha"' in clean, "missing per-SHA crash/no-row backstop")
-require("if value is None:" in clean and "return []" in clean, "RoboRev null is not treated as empty")
-
 rail = (root / "scripts/cbr-codex.sh").read_text()
 require("codex roborev pre-commit gitleaks python3 git node jq" in rail, "doctor does not require jq for compaction recovery")
 require("--sandbox workspace-write" in rail, "builder sandbox is not workspace-write")
@@ -91,9 +86,8 @@ require("provision PASS not recorded in this worktree" in rail and '"result":"PA
 require("same-phase resume limit exceeded" in rail, "crash-storm bound missing")
 
 watch = (root / "scripts/captain-watch-codex.sh").read_text()
-require('done0="$(digest "$wt/DONE.marker")"' in watch, "DONE baseline hash latch missing")
+require('done0="$(digest "$wt/$done_name")"' in watch, "DONE baseline hash latch missing")
 require('if [ "$done1" != "$done0" ]' in watch, "DONE change latch missing")
-require("stale-heartbeat" in watch, "watchdog heartbeat check missing")
 
 graph = (root / "scripts/cbr_graph.py").read_text()
 require("dependency cycle" in graph, "DAG cycle check missing")
@@ -129,7 +123,7 @@ dispatch = (root / "templates/dispatch-prompt.md").read_text()
 for clause in (
     "$codex-controlled-build-run", "task_plan.md", "contracts", "outside this worktree",
     "prove-NO", "watched-fail TDD", "RoboRev", "checkpoint", "Never request UI input",
-    "ASK-ORCH.md", "DONE.marker",
+    "ASK-ORCH.md", "DONE-<branch>.marker",
 ):
     require(clause in dispatch, f"dispatch prompt clause missing: {clause}")
 

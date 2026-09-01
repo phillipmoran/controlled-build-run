@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# After a context compaction, re-inject the origin host's grounding docs into context.
+# After a context compaction, re-inject the reference host's grounding docs into context.
 # A compaction summarizes the conversation, which fuzzes the verbatim rules the
 # agent read at boot — so over a long run the agent drifts from the precise
 # principles. CONSTITUTION and ENGINEERING are short and ARE the principles, and
@@ -27,7 +27,7 @@ skill="$root/skills/controlled-build-run/SKILL.md"
 tdd="$root/skills/test-driven-development/SKILL.md"
 [ -f "$con" ] && [ -f "$eng" ] || exit 0
 
-note="Context was just compacted. Re-grounding to the origin host's core docs and the build skill below (and, if a build is in progress, the TDD skill and the active plan) — a summary fuzzes the verbatim rules, so here they are again, whole. You have ALREADY booted AND already set up the harness: do NOT re-run AGENTS.md's boot ritual, and do NOT re-verify or re-wire the harness (the hooks, Probity, RoboRev, pre-commit) — both were done before this compaction and are still active. If a plan is shown below, it is your current source of truth — continue from its current phase, and do NOT go read the newest handoff and switch to its priorities (that handoff is from a prior session; the plan supersedes it for this run). Before any contract-shaped decision, also re-read the relevant file(s) under contracts/ (those are pointed at, not pasted here).
+note="Context was just compacted. Re-grounding to the reference host's core docs and the build skill below (and, if a build is in progress, the TDD skill and the active plan) — a summary fuzzes the verbatim rules, so here they are again, whole. You have ALREADY booted AND already set up the control plane: do NOT re-run AGENTS.md's boot ritual, and do NOT re-verify or re-wire the control plane (the hooks, Probity, RoboRev, pre-commit) — both were done before this compaction and are still active. If a plan is shown below, it is your current source of truth — continue from its current phase, and do NOT go read the newest handoff and switch to its priorities (that handoff is from a prior session; the plan supersedes it for this run). Before any contract-shaped decision, also re-read the relevant file(s) under contracts/ (those are pointed at, not pasted here).
 
 === CONSTITUTION.md ===
 $(cat "$con")
@@ -38,7 +38,7 @@ $(cat "$eng")"
 if [ -f "$glo" ]; then
   note="$note
 
-=== GLOSSARY.md (the origin host's canonical vocabulary — acronyms like MAD/RAD/RNG/EP/MP/HP and core terms; injected whole so they stay exact when drift spikes) ===
+=== GLOSSARY.md (the reference host's canonical vocabulary — acronyms like MAD/RAD/RNG/EP/MP/HP and core terms; injected whole so they stay exact when drift spikes) ===
 $(cat "$glo")"
 fi
 
@@ -51,11 +51,11 @@ fi
 
 # The build skill is pasted UNCONDITIONALLY: a builder session needs its loop, and an
 # orchestrator session (no plan at root) needs the same file for its monitoring checklist,
-# dispatch rules, and merge-gate duties (operator, 2026-06-11). The TDD skill and the plan
+# dispatch rules, and merge-gate duties (operator-ratified 2026-06-11). The TDD skill and the plan
 # stay conditional — they only matter when this session is itself building.
 [ -f "$skill" ] && note="$note
 
-=== controlled-build-run SKILL.md (the build process — re-grounded whole so the loop survives the compaction. Building off a plan: continue its phases; do NOT re-run Phase 1 harness setup. Orchestrating dispatched builders: this skill's dispatch, monitoring, surfacing-cadence, and merge-gate rules bind you) ===
+=== controlled-build-run SKILL.md (the build process — re-grounded whole so the loop survives the compaction. Building off a plan: continue its phases; do NOT re-run Phase 1 control-plane setup. Orchestrating dispatched builders: this skill's dispatch, monitoring, surfacing-cadence, and merge-gate rules bind you) ===
 $(cat "$skill")"
 
 plan="$root/task_plan.md"

@@ -115,12 +115,22 @@ out="$(PATH="$tmp/empty:$sys_path" cbr_tool_staleness_report "")" \
 [ -z "$out" ] || fail "probe spoke with empty pin and no tools: $out"
 
 # --- both leaves' doctors wire the probe ---
-# Resolve each leaf like lib above: host layout first, package layout fallback.
-pkg="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-claude_leaf="$root/skills/claude-controlled-build-run/scripts/cbr.sh"
-[ -f "$claude_leaf" ] || claude_leaf="$pkg/skill/claude-controlled-build-run/scripts/cbr.sh"
-codex_leaf="$root/skills/codex-controlled-build-run/scripts/cbr-codex.sh"
-[ -f "$codex_leaf" ] || codex_leaf="$pkg/skill/codex-controlled-build-run/scripts/cbr-codex.sh"
+# Host layout first, package layout as the fallback — the same resolution the
+# library above already uses. Without it this fixture reports "the leaf doctor
+# does not wire the probe" whenever it runs from a port, where the leaf scripts
+# live under kit/skill/ and there is no skills/ tree at all. A path failure
+# wearing a defect's message is worse than no coverage: someone goes looking
+# for a bug that is not there, and next time skips the test.
+kitdir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+leaf_script() { # leaf_script <host-relative path> <kit-relative path>
+  if [ -f "$root/$1" ]; then printf '%s' "$root/$1"
+  elif [ -f "$kitdir/$2" ]; then printf '%s' "$kitdir/$2"
+  fi
+}
+claude_leaf="$(leaf_script skills/claude-controlled-build-run/scripts/cbr.sh skill/claude-controlled-build-run/scripts/cbr.sh)"
+codex_leaf="$(leaf_script skills/codex-controlled-build-run/scripts/cbr-codex.sh skill/codex-controlled-build-run/scripts/cbr-codex.sh)"
+[ -n "$claude_leaf" ] || fail "the Claude leaf script is in neither the host layout nor the package layout — nothing to check the wiring against"
+[ -n "$codex_leaf" ]  || fail "the Codex leaf script is in neither the host layout nor the package layout — nothing to check the wiring against"
 grep -q "cbr_tool_staleness_report" "$claude_leaf" \
   || fail "Claude leaf doctor does not call cbr_tool_staleness_report"
 grep -q "cbr_tool_staleness_report" "$codex_leaf" \

@@ -53,19 +53,21 @@ Commit early and often. Review cost is controlled by routing and diff risk, not 
 
 ## RoboRev lifecycle
 
-After every commit:
+Per-commit reviews are ADVISORY (2026-08-31 cadence): read a FAIL when it
+lands, fix now only what a later commit would compound. The homework comes
+due at the PR boundary — run the branch review, batch-fix its findings, and
+respond+close every open job with an explicit disposition:
 
-- PASS: the clean gate auto-closes an open clean review.
-- FAIL fixed: `roborev respond <job> -m '<evidence>' && roborev close <job>`.
-- FAIL rejected/intentional: respond with the rule/evidence and close.
+- Fixed: `roborev respond --job <id> -m '<evidence>' && roborev close <id>`.
+- Rejected/intentional: respond with the rule/evidence and close.
 - Deferred/human: convert to a plan item, respond, and close; do not leave an ambiguous open review.
-- Crash/no review: `roborev review <sha>`, wait, then handle the completed result.
+- Crash/no review: re-run, wait, then handle the completed result — the merge gate blocks on crashed or missing branch reviews.
 
 Cap finding/fix iterations at about two. Cap repeated review infrastructure retries at about five with backoff. A same-error storm is a blocker, not permission to skip.
 
 ## Phase checkpoint
 
-At each completed plan phase, stamp `end_sha = HEAD`. Review only `<last-reviewed-sha>..HEAD` with an independent read-only Codex subagent/session. The reviewer checks the phase goal and touched binding contracts, not line-level style already covered by RoboRev.
+At each completed plan phase, stamp the checkpoint table and commit: `end_sha` is the stamp commit's parent (run `git rev-parse HEAD`, write the result, commit). A stamp commit touches only record files (checkpoint table, plan/status/progress/findings records), never source or tests, and is reviewed against exactly that property. Review only `<last-reviewed-sha>..HEAD` with an independent read-only Codex subagent/session. The reviewer checks the phase goal and touched binding contracts, not line-level style already covered by RoboRev.
 
 Contradiction taxonomy:
 
@@ -84,7 +86,7 @@ Most phases should return zero findings. Require each item to contain:
 - contradiction: one sentence;
 - resolution: concrete fix or `needs-human`.
 
-Only quoted evidence-backed FINDINGs bind. Fix load-bearing findings before the next phase. Stamp `reviewed = HEAD`; reopened phases review only their new delta.
+Only quoted evidence-backed FINDINGs bind. Fix load-bearing findings before the next phase. Stamp `reviewed = end_sha`; reopened phases review only their new delta.
 
 ## Golden sample
 
@@ -95,7 +97,7 @@ When a human or model reads the output, generate a realistic full sample from re
 After interruption or process death:
 
 1. Read `task_plan.md`, `progress.md`, `findings.md`, `git log`, `git status`, and RoboRev state.
-2. Confirm branch/cwd/harness.
+2. Confirm branch/cwd/control plane.
 3. Resume the recorded Codex thread with `cbr-codex.sh resume <slug> --prompt-file <resume-note>` when usable; otherwise launch a new root with the one-line resume instruction.
 4. Continue from the next unchecked phase. Do not redo committed phases or reread a stale handoff as current scope.
 5. If the worker repeatedly dies in the same phase, stop relaunching and surface the poisoned state.

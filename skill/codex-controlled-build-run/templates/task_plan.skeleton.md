@@ -19,17 +19,17 @@
 <!-- Every exemption names a substitute proof. No row means no exemptions. -->
 
 | Zone | Why TDD cannot directly guard it | Substitute proof |
-|---|---|---|
-| none | — | — |
+| ---- | -------------------------------- | ---------------- |
+| none | —                                | —                |
 
 ## Build phases
 
 <!-- Each phase is decision-dense and implementation-sparse: observable result,
 watched red, locked choices, owned files, and verification command. -->
 
-- [ ] P0 — Harness operability: doctor plus live prove-NO/prove-YES.
+- [ ] P0 — Control-plane operability: doctor plus live prove-NO/prove-YES.
 - [ ] P1 — <observable result>; red: <test>; locks: <decisions>;
-  owns: <files>; verify: `<command>`.
+      owns: <files>; verify: `<command>`.
 
 ## Verification commands
 
@@ -39,10 +39,10 @@ watched red, locked choices, owned files, and verification command. -->
 
 ## Phase checkpoint ledger
 
-| Phase | end_sha | reviewed | result | evidence |
-|---|---|---|---|---|
-| P0 | pending | pending | pending | pending |
-| P1 | pending | pending | pending | pending |
+| Phase | end_sha | reviewed | result  | evidence |
+| ----- | ------- | -------- | ------- | -------- |
+| P0    | pending | pending  | pending | pending  |
+| P1    | pending | pending  | pending | pending  |
 
 ## Open with human
 
@@ -54,4 +54,4 @@ None.
 ## In-flight decision log
 
 | Date | Decision | Evidence/rationale |
-|---|---|---|
+| ---- | -------- | ------------------ |

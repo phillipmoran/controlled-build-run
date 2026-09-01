@@ -7,7 +7,7 @@ triage lives in `judgment.md`.
 ## Readback — a dispatched builder proves it read the plan
 
 A builder that receives a plan it did not write has one failure mode above
-all others: it *skims*. Nothing downstream catches it. Probity guards the
+all others: it _skims_. Nothing downstream catches it. Probity guards the
 writes, the gates guard the commits, RoboRev reviews the diff — and every one
 of them is happy while the builder builds a competent, well-tested version of
 the wrong thing, or quietly re-enters ground the plan put OUT of scope. The
@@ -35,10 +35,9 @@ So the readback is LAW, not courtesy:
   independent reads it), but it is not worthless: restating a plan you wrote
   yourself is where you notice the step whose "why" you cannot reconstruct.
 
-A leaf may add a deterministic **outside-view** fact for this — whether the
-dispatched builder's `progress.md` contains a readback at all — because
-presence is a mechanical fact. Whether the readback is *faithful* is a
-judgment, so it may only surface, never gate (`policy.md`).
+The dispatcher reads the readback with its own eyes — presence and
+faithfulness are both the dispatcher's judgment; no control-plane parser stands
+behind this law.
 
 ## The loop
 
@@ -49,7 +48,7 @@ judgment, so it may only surface, never gate (`policy.md`).
 2. **Lock the scope with the human, before any code.** Agree exactly what
    you're building and what's out. Surface forks; don't decide vision-shaped
    questions (contract edits, new top-level packages, out-of-glossary names,
-   scope changes) alone. An *engineering*-shaped fork — one inside scope and
+   scope changes) alone. An _engineering_-shaped fork — one inside scope and
    contracts — takes a multi-model panel instead (see `judgment.md`).
 
    **Before you write the plan, run the fix through four questions.**
@@ -66,7 +65,7 @@ judgment, so it may only surface, never gate (`policy.md`).
       other sites — now, or the next time someone writes similar code? And
       has it hit before — scan the git history (`git log --grep`, or the
       commits that touched these files), the one record that can't go stale.
-      If it repeats or is easy to repeat, fix the *class*: name it — a real
+      If it repeats or is easy to repeat, fix the _class_: name it — a real
       class earns a principle — and guard it structurally, not just today's
       instance.
    3. **Can the bad state be made impossible?** Ask what let the broken
@@ -75,7 +74,7 @@ judgment, so it may only surface, never gate (`policy.md`).
       duplicate) over a runtime guard that only watches for it. Guards are
       the backstop; structure is the cure (single-owner; derive-don't-sync).
    4. **Is the behavior I'm about to change pinned by a test?** Before you
-      touch a seam, characterize what it does *today* — including the
+      touch a seam, characterize what it does _today_ — including the
       edges — with a test. An untested behavior is where a silent regression
       hides (test discipline).
 
@@ -95,7 +94,7 @@ judgment, so it may only surface, never gate (`policy.md`).
    no behavior** (a standalone sync→async flip is the classic) — it can't be
    test-driven and Probity will rightly block it. Fold it into the first
    step that adds the behavior it serves, and lead with that behavior's test
-   (see *Probity gotchas* below).
+   (see _Probity gotchas_ below).
 
 4. **Confirm the re-ground hook points at this plan** (`policy.md`, piece 6).
 
@@ -103,40 +102,52 @@ judgment, so it may only surface, never gate (`policy.md`).
    - run the suite first (baseline green),
    - write **one** failing test; run it; watch it fail for the right reason,
    - if Probity demands it, add a stub that makes the symbol importable but
-     still fails the *assertion* (clean red), then write the real code,
+     still fails the _assertion_ (clean red), then write the real code,
    - run tests, then lint and types, and the formatter to tidy (the gate's
      format check blocks an untidied commit),
    - **commit** — small, often, and that is the LAW, not a preference
      (ratified by the human 2026-07-03: early catch beats batching; never
-     batch commits to save review cost). Review cost decouples from commit
-     count on the ROUTING side instead: a docs-only diff (every changed path
-     under `docs/**` or `*.md`) gets a skipped or feathered review, decided
-     by the DIFF PATHS, never by builder declaration — a builder saying
-     "docs-only" counts for nothing; the paths are the fact. Move this
+     batch commits to save review cost). Move this
      cycle's plan checkbox (`[ ] → [x]`) **in the same commit** — never as a
      later pass, because the plan is the one status source the re-ground
      hook re-injects and that every fresh agent reads, yet no other check
      here (Probity, pre-commit, RoboRev) reads it, so a checkbox that lags
      the code silently misleads the next (or compacted) agent,
-   - if RoboRev returns a FAIL, handle it **and then close the review** so
-     an open FAIL always means a real unresolved item: fixed → close it;
-     wrong or intentional → close-with-reason (respond, then close). Leave
-     it open only if it's deliberately deferred or needs the human. Max ~2
-     fix rounds **per finding-surface**, then stop fixing: escalate, or
-     exit by judgment — decline with recorded reasoning and surface the
-     decline to the human for overrule. The asymmetry that justifies the
-     low limit: a decline is reversible (reopening costs the human one
-     glance at your reasoning) while an unbounded chain costs a full
-     commit-review-fix lap per round. A genuinely NEW defect — a different
-     surface, or found on a fresh commit — resets the counter: the limit
-     caps re-litigation, never real bugs. (Closing after a fix is the easy step to
-     forget — so since 2026-06-12 it is mechanically enforced: the
-     review-clean pre-commit gate refuses the next commit while this branch
-     has any open, queued, or running review. A deliberately deferred review
-     must be close-with-reason'd and re-opened as a plan item instead of
-     left open. The session-sweep remains the backstop.)
+   - per-commit reviews are ADVISORY in the moment (cadence ratified
+     2026-08-31: the wall moved to the merge boundary). Reviews keep
+     enqueueing on every commit — read a FAIL when it lands and fix what a
+     later commit would compound — but nothing holds the next commit. The
+     homework comes due at the PR boundary: run
+     `roborev review --branch --base <integration>`, handle its findings,
+     and respond+close EVERY open job on the branch — fixed → close;
+     wrong or intentional → close-with-reason; clean bookkeeping →
+     fold-closed by the merge gate as superseded by the branch review.
+     **Batch the boundary fixes.** Every fix commit moves the tip and
+     invalidates the branch review, so fix-one-rerun-review is a loop that
+     converges only by luck (measured 2026-08-31: ~13 branch-review runs
+     for one PR). The law: collect ALL of a branch review's findings,
+     disposition each (fix or decline-with-reason), land the fixes as ONE
+     batch, then rerun the branch review ONCE. A rerun that surfaces only
+     already-ruled classes gets dispositions, not commits.
+     The merge review gate (`cbr-core/scripts/merge-review-gate.sh`, run by
+     the pre-merge-commit hook on auto-merges and by pre-commit when a merge
+     is completed by hand) refuses the merge while the branch has open
+     blocking findings, lacks a completed branch review spanning
+     merge-base..tip, or carries more review-fix commits than the cap with
+     no ruling on file.
+     Max 3 fix rounds TOTAL (ratified 2026-08-31), then stop fixing:
+     escalate, or exit by judgment — decline with recorded reasoning and
+     surface the decline to the human for overrule. The asymmetry that
+     justifies the low limit: a decline is reversible (reopening costs the
+     human one glance at your reasoning) while an unbounded chain costs a
+     full commit-review-fix lap per round. The gate counts every review-fix
+     commit in the merge range; it cannot tell finding chains apart, so
+     when the count is honest work — a genuinely NEW defect per round, not
+     re-litigation — that is exactly what the escalation ruling records.
+     Past the cap, record the ruling:
+     `git config branch.<branch>.cbrEscalation '<who ruled what, when>'`.
    - if a review **crashes** (an infra failure — an overload, an auth lapse,
-     a dead daemon — distinct from a FAIL *verdict*) it produced **no review
+     a dead daemon — distinct from a FAIL _verdict_) it produced **no review
      at all**, so that commit is unreviewed: **re-run it, never skip** —
      request a fresh review of that sha and poll until it lands done (an
      up-front rejection costs ~nothing to retry — back off and retry).
@@ -144,20 +155,19 @@ judgment, so it may only surface, never gate (`policy.md`).
      wait — that is no longer a transient blip but a likely real outage (a
      provider incident, an expired auth token, a dead daemon), so surface it
      (flag the human / open a plan blocker) rather than hammering. Re-run is
-     the default; infinite retry is not. The review-clean gate holds the
-     floor: it blocks a commit whose reviews *all* crashed, and ignores a
-     crashed job only once that same commit has a done review (the crash was
-     a duplicate/retry). "It errored, move on" is the one thing the gate
-     will not let you do.
+     the default; infinite retry is not. The merge review gate holds the
+     floor: a crashed or still-queued job on the branch is a blocker at the
+     merge boundary, and no completed branch review means no merge. "It
+     errored, move on" survives to the boundary and no further.
 
 6. **Render and review a golden sample** when the work produces an artifact
-   a human or an LLM will *read* — see `reviews.md`.
+   a human or an LLM will _read_ — see `reviews.md`.
 
 7. **Update the plan as you go** (mark phases done; log errors) — it's your
    durable memory and the re-ground hook re-injects it. And keep a **friction
-   log**: the moment the harness itself wastes your time (a manual chore, a
+   log**: the moment the control plane itself wastes your time (a manual chore, a
    flaky gate, a missing provision step), write one line about it in
-   `findings.md` right then. A harness retro is then a read of recorded
+   `findings.md` right then. A control-plane retro is then a read of recorded
    artifacts, not a reconstruction from memory — and a friction that recurs
    across strands is the signal for an automation candidate.
 
@@ -168,7 +178,7 @@ judgment, so it may only surface, never gate (`policy.md`).
 9. **Closeout** when the build is done. First confirm every phase shows
    `reviewed == its end_sha` — a missing stamp means a checkpoint was
    skipped; do it now. Then run your project's end-of-work closeout ritual.
-   The per-phase checkpoints catch issues *early*; they do **not** replace
+   The per-phase checkpoints catch issues _early_; they do **not** replace
    or shrink the closeout's whole-work review — that ritual owns how the two
    relate.
 
@@ -185,83 +195,25 @@ judgment, so it may only surface, never gate (`policy.md`).
    base — main for a solo strand; in a fleet, the integration branch
    (`modes/fleet.md`) — then remove the worktree and delete the branch.
 
-   **Who merges: after GO, the builder merges.** Approval and execution are
-   two different acts, and leaving the second one unassigned means both
-   parties reach for it. On 2026-08-19 the builder and its orchestrator
-   merged the same strand twice within seconds of each other; it was a no-op
-   only by luck, and the same race with a conflict, a hook, or a `--no-ff`
-   in flight is a corrupted base branch that nobody owns.
-
-   So the rule is: the builder asks for GO through the file channel and
-   waits; the tier that grants GO grants permission, not the merge itself.
-   Once GO lands, the BUILDER performs the merge. It is the right owner
-   because it is the session holding the context a conflict would need, and
-   because it is already the one whose gates must be green at that moment.
+   **Who merges — one rule.** The occupant of the target branch merges
+   after GO; merges to main follow the HOST repo's binding branch law (who
+   may merge there, and on what gates, is the host's call, not this
+   process's). Git only allows a merge from a checkout sitting on the
+   target branch, so ownership follows occupancy by construction — no
+   transfer saga, no race: exactly one party CAN act. GO is permission, not
+   the merge itself.
 
    **The merge and the closeout have different owners, on purpose.** The
    closeout REAPS the strand — worktree, branch, watch files — so it cannot
    be run by a session sitting inside the thing it destroys, and the leaves
    enforce exactly that (a closeout refuses to run from the checkout it is
    closing, and refuses a worktree anybody is still working in). So the
-   builder merges and then writes its closeout NOTES and its completion
-   marker; the tier above runs the closeout command afterwards, from the
-   base checkout, once the builder is gone. Reading "the builder owns its
+   builder writes its closeout NOTES and its completion marker; the tier
+   above runs the closeout command afterwards, from the base checkout, once
+   the builder is gone. Reading "the builder owns its
    ending" as "the builder runs closeout" produces a command that cannot
    succeed — see `modes/fleet.md`, which has always assigned the closeout
    command to the orchestrator.
-
-   **The base branch's own ownership rule wins.** "The builder merges" settles
-   WHICH of the two automated tiers performs an approved merge; it does not
-   grant either of them a branch a human has reserved. A repo whose binding
-   docs say a named person merges a given branch has already assigned that
-   act, and no process law written elsewhere overrides it — read the rule as
-   applying to the branches the machinery owns (integration and below), and
-   treat a human-owned branch as a stop: prepare the merge, hand it over, say
-   so in the records. Where the two are in tension, the ask goes to the human
-   and names the tension; a builder that resolves it in its own favour has
-   given itself permission, which is the failure this whole step exists to
-   prevent.
-
-   **The merge transfers when the target branch is occupied.** Git refuses
-   to merge into a branch that is checked out in another worktree, so a
-   builder can hold GO and still be mechanically unable to act. In a fleet
-   this is not an edge case but the standing state: the orchestrator's own
-   checkout typically sits on the integration branch for the whole epic, so
-   the builder's GO-merge is unsatisfiable by construction (observed on a
-   downstream deployment, 2026-08-26 — two consecutive epics). Occupancy is
-   the RACE'S OPPOSITE — exactly one party CAN act — so the transfer is
-   safe by the same logic that makes the race dangerous: the builder writes
-   a handoff note through the ordinary question channel — no new filename —
-   stops, and the occupant of the target branch performs the merge it
-   already approved, recording that it did. The note's required parts, in
-   order (shape proven on the same deployment's run, where the occupant
-   landed the handed-off merge in one command sequence): a header that says
-   BLOCKING and states the world before the reasoning ("merge NOT done") —
-   the flag is what makes a skimming reader stop, because most question
-   entries are recorded-default non-blockers; the occupancy facts, each
-   independently checkable; the named hazard (the plumbing route and
-   exactly what one `reset --hard` would destroy — naming the destructive
-   reflex is what keeps the next builder from trying it); and a
-   `git merge-tree --write-tree` pre-verification summarized as an exact
-   conflict list — expected, not a courtesy, because it converts the
-   handoff from "you deal with it" into a pre-chewed merge. Mirror the
-   handoff at the top of the strand's progress record too: that file is
-   archived verbatim at closeout, so the permanent record explains the
-   anomalous merge authorship without the question channel's context. What
-   the builder must NEVER do is route around occupancy with plumbing: a
-   `commit-tree` / `update-ref` ref-move lands under a working tree that
-   may hold uncommitted work, leaving its index behind its new HEAD, where
-   one reflex `reset --hard` destroys the occupant's edits.
-
-   **The orchestrator merges only when the builder is proven dead.** Proven,
-   not assumed, and not inferred from silence: the leaf's status command
-   must report no live session AND no live process rooted in the worktree
-   (`policy.md` — deterministic facts may gate, and occupancy is one). A
-   builder that is merely quiet, compacting, or waiting on a review is
-   alive, and taking the merge away from it is how the race gets recreated
-   by the party that was supposed to prevent it. When the orchestrator does
-   take over, it says so in the strand's records, because the next reader
-   needs to know which session's judgment the merge carries.
 
    **When occupancy cannot be established at all.** On a host whose process
    table cannot be inspected, "is anybody working here" has no answer, and
@@ -304,6 +256,7 @@ judgment, so it may only surface, never gate (`policy.md`).
       retry only when the records in it name the branch being closed out. One
       that names a different branch, or names none, is another strand's record
       and stops the closeout for a human to move aside.
+
    2. **Remove the strand's completion marker from the base.** The marker
       merges onto the base with the work and stays there. The next strand
       folds the base into its branch, inherits a marker naming a strand that
@@ -320,10 +273,57 @@ judgment, so it may only surface, never gate (`policy.md`).
    All three are staged with the closeout commit, so they land as one
    deliberate act rather than as debris someone finds later in `git status`.
    They are deterministic git and filesystem work with no provider in them:
-   a harness that runs more than one leaf implements them ONCE, shared, and
+   a control plane that runs more than one leaf implements them ONCE, shared, and
    calls that one implementation from each leaf. Two copies of a rule this
    quiet is two copies that drift, and the drift is invisible precisely
-   because the failure shows up in the *next* strand, not this one.
+   because the failure shows up in the _next_ strand, not this one.
+
+Probing an agent CLI (a liveness check, a version check)? Run it from an
+empty scratch directory, never from a worktree carrying a plan: an agent
+CLI launched inside a worktree reads the plan, adopts the builder role, and
+writes false records — and a false control-plane-broken marker can convince a
+watcher that a healthy strand is dead (field incident, 2026-08-27).
+
+## Single-source records — one fact, one file (ratified 2026-08-29)
+
+Every fact a strand writes down lives in exactly **one** record file. Every
+other record that needs it **links to the owner** and never restates it.
+
+The failure this closes is not untidiness. A fact written in two places is a
+fact that will be wrong in one of them, with nothing on the page to say which,
+and the reader who opens the stale copy acts on it. It cost this control plane a
+status file whose ask list drifted three days behind the ask file while both
+still looked authoritative — an orchestrator reading the wrong one would have
+missed a parked question entirely. Two copies also make every review of those
+records a wording review, because a reviewer that sees the same fact twice
+must decide which is current, and cannot.
+
+The default ownership, which a host may extend but not overlap:
+
+- **the outside observer's fields** (state, phase, branch, blocked-on, last
+  phase complete) → the STATUS record. Nothing else carries them in that form.
+- **decisions, scope, phase checkboxes, the phase-checkpoint table, the
+  endgame chain** → the plan.
+- **the running narrative, the readback, per-phase evidence** → the progress log.
+- **durable findings, ledgers, reconciliation tables** → the findings record.
+- **open questions and the defaults being proceeded on** → the ask file;
+  **answers** → the answer file.
+
+This is a **mechanical** rule, so it is enforced mechanically or not at all: a
+reviewer instructed to notice duplication is a reviewer who will notice it
+sometimes. The host wires a commit gate driven by an ownership table — a
+pattern per fact class and the file that owns it — and a fact matching outside
+its owner FAILS the commit, naming the file, the line, the class and the owner.
+A review row is not a substitute and does not discharge this.
+
+Two properties that gate has to have, both learned the hard way:
+
+- It **fails closed on its own infra.** It blocks commits, so an ownership
+  table it cannot read is not permission to proceed.
+- A pattern that matches **nothing in its own owner** is a stale class, and a
+  stale class silently retires itself along with every duplicate it would have
+  caught. That is louder than a violation, not quieter: it stops the commit and
+  asks for a human, unless the table declares the record legitimately empty.
 
 ## Probity gotchas (so you don't fight the guard)
 
@@ -331,12 +331,12 @@ judgment, so it may only surface, never gate (`policy.md`).
   behavior-asserting test, or the add is blocked.
 - **One new test per write.**
 - **Stub-then-real:** an import error is not a clean red. Add a stub that
-  raises (or returns the wrong thing), watch the *assertion* fail, then
+  raises (or returns the wrong thing), watch the _assertion_ fail, then
   implement.
 - **Minimal green:** implement only what the failing test needs; add the
   next branch via its own failing test.
-- **The red must reference the change.** Probity reads the *failing* test
-  and only unlocks a production edit that would make *that* test pass — an
+- **The red must reference the change.** Probity reads the _failing_ test
+  and only unlocks a production edit that would make _that_ test pass — an
   unrelated red unlocks nothing. The watched-fail must exercise the symbol
   or behavior you're about to change. (Probed: an edit adding a marker
   symbol stayed blocked while the only red asserted on an unrelated name —
@@ -369,7 +369,7 @@ judgment, so it may only surface, never gate (`policy.md`).
   possible).
 - **Probity guards the worktree the session is rooted in — and only that
   one.** It works correctly inside a worktree (proven: a worktree-rooted
-  session blocks untested production code). The trap is a *mismatch* — a
+  session blocks untested production code). The trap is a _mismatch_ — a
   session rooted in folder A editing files in worktree B is unguarded,
   because Probity's gated-tree glob only sees the session's own root. Keep
   the session rooted where the code lives (one session per worktree);
@@ -381,12 +381,12 @@ judgment, so it may only surface, never gate (`policy.md`).
   unlocks the production fix. This is the honest path and almost always
   works.
 - **A shape-only change (sync→async, no new behavior) has no honest red —
-  so it must not be its own step.** Probity blocks it *correctly*: nothing
+  so it must not be its own step.** Probity blocks it _correctly_: nothing
   behaves differently, only the contract changes color, and the only failure
   you can produce is a crash, which the rubric rejects as "not the right
   reason." Don't retry the edit and don't reach for an exception.
   Re-sequence: fold the shape change into the first step that adds the
-  *real* behavior it exists for, and lead with that behavior's failing
+  _real_ behavior it exists for, and lead with that behavior's failing
   test — the flip then rides in as the implementation that red demands.
   (The rubric's own clean-red recovery, "adjust the signature to reach the
   assertion," is exactly this path.)

@@ -21,14 +21,13 @@
     "adapters/**/*.ts",
     "src/**/*.{ts,tsx}"
   ],
-  "reinjectionDocs": ["CONSTITUTION.md", "ENGINEERING.md", "VISION.md", "AGENTS.md"],
+  "reinjectionDocs": ["CONSTITUTION.md", "AGENTS.md"],
   "setupCommands": [],
   "toolchainProbe": "EDIT-ME",
   "verificationCommands": ["EDIT-ME"],
   "liveSmokeCommand": "EDIT-ME",
   "stallSeconds": 900,
   "reviewFailGraceSeconds": 600,
-  "watchdogSeconds": 900,
   "samePhaseCrashLimit": 2,
   "productPaths": ["packages", "src"]
 }
