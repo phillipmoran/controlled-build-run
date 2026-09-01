@@ -9,27 +9,37 @@ weeks if needed, without them screwing things up. It does the remembering,
 checking, and reviewing mechanically, so nothing depends on the agent staying
 disciplined on its own.
 
+The point is that you can walk away. Hand off the work, go do something
+else, let it run overnight or across days, and trust that the process
+is enforced while you're away.
+
+## When to use CBR
+
+On extended agent development tasks, especially tasks where
+* You expect compaction (e.g., tasks >45 minutes)
+* You would like programmatically enforced guardrails for your agent
+* You want a control-plane that does not vendor lock you to a provider
+
 ## Why this exists
 
 Everyone writes rules for their agents: a CLAUDE.md, an AGENTS.md, a system
 prompt full of "always write tests" and "never push to main." Long sessions
-ignore them. Not out of defiance: the agent's context gets compacted, the
+ignore them. Eventually, the agent's context gets compacted, the
 rules become a summary of a summary, and by hour six the session is
-confidently building the wrong thing with no tests.
+building the wrong thing.
 
 Written directions are advice. CBR is enforcement. Its gates are hooks in the
-repo, so they fire whether or not the agent remembers they exist. One rule
-decides what may block: deterministic facts gate, fallible judgment only
-advises. A type error blocks a commit. An LLM reviewer's opinion never does,
-until the merge boundary, where its findings have to be answered. And every
+repo, so they fire whether or not the agent remembers they exist. And every
 judgment that is genuinely a human's (scope, vision, deploys, deleting
 ambiguous work) escalates to the operator rather than defaulting past them.
 
 CBR is not a harness. Claude Code and Codex are harnesses. CBR rides inside
-whichever one you use: the process law is provider-neutral, and a thin
-adapter per harness supplies the tool names, paths, and hook wiring.
+whichever one you use.
 
-Right now those two adapters are the ones that exist. The design supports
+The process law is provider-neutral, and a thin adapter per harness supplies
+the tool names, paths, and hook wiring.
+
+Right now CBR has adapters for Claude Code and Codex. The design supports
 more: if you want CBR on another harness, open an issue and tell me which
 one, or write the adapter yourself and PR it. An adapter is a few dozen small
 files (the Claude Code one is about 30: hook scripts, config templates, one
