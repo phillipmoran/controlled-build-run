@@ -24,6 +24,46 @@ On extended agent development tasks, especially tasks where
 * You would like programmatically enforced guardrails for your agent
 * You want a control-plane that does not vendor lock you to a provider
 
+## How to use CBR
+
+### How I actually use it
+
+A real session looks like this:
+
+1. **Talk it through first.** Before any CBR command, I have a normal
+   conversation with the agent about the feature: what it is, what it
+   touches, what "done" means. This is the spec. Plan it however you like
+   (a [Wayfinder](https://github.com/mattpocock/skills/tree/main/skills/engineering/wayfinder) run, a PRD, a whiteboard); CBR compiles whatever
+   comes out.
+2. **Hand it to CBR.** Once the shape is clear, I say something like "run
+   this feature build per CBR." The agent compiles the conversation into a
+   plan, gets my yes, and builds under the gates from there.
+3. **Or fan it out.** For bigger work: "parallelize this per CBR, you act as
+   orchestrator." The agent splits the plan into strands, spins up builder
+   sessions in their own worktrees, and watches them from outside.
+
+That's it. The discussion is where the thinking happens; CBR is what keeps
+the build honest once the thinking is done.
+
+### The commands
+
+In Claude Code, five slash commands cover the whole lifecycle.
+Plain words work too — "set up CBR in this project" or "do this per the CBR
+control plane" reach the same skills.
+
+- `/cbr` — the front door. Checks the repo's state and routes you: not
+  armed → offers setup, no plan → plan, plan ready → build.
+- `/cbr-setup` — arms a repo. Vendors the package, adapts the configs to
+  your stack, and proves the gates actually fire.
+- `/cbr-doctor` — read-only health check: what's armed, what's dead, what
+  to do about it.
+- `/cbr-plan` — compiles planning output you already have (a design
+  conversation, a PRD, a Wayfinder session) into a gated plan file.
+- `/cbr-build` — executes the current plan under the loop, solo or as an
+  orchestrated fleet, whichever the plan calls for.
+- On Codex, the same lifecycle runs through `scripts/cbr-codex.sh` verbs:
+  `arm`, `doctor`, `provision`, `launch`, `closeout`.
+
 ## Why this exists
 
 Everyone writes rules for their agents: a CLAUDE.md, an AGENTS.md, a system
@@ -130,42 +170,6 @@ config the first wrote; each installs its own hooks.
 Whichever you pick: do the setup's human trust/login steps on each machine
 (everything else the agent can do), then run that harness's `doctor` and
 live Probity probe. CBR is not armed for a harness until both pass there.
-
-## How to use CBR
-
-In Claude Code, five slash commands cover the whole lifecycle.
-Plain words work too — "set up CBR in this project" or "do this per the CBR
-control plane" reach the same skills.
-
-- `/cbr` — the front door. Checks the repo's state and routes you: not
-  armed → offers setup, no plan → plan, plan ready → build.
-- `/cbr-setup` — arms a repo. Vendors the package, adapts the configs to
-  your stack, and proves the gates actually fire.
-- `/cbr-doctor` — read-only health check: what's armed, what's dead, what
-  to do about it.
-- `/cbr-plan` — compiles planning output you already have (a design
-  conversation, a PRD, a Wayfinder session) into a gated plan file.
-- `/cbr-build` — executes the current plan under the loop, solo or as an
-  orchestrated fleet, whichever the plan calls for.
-- On Codex, the same lifecycle runs through `scripts/cbr-codex.sh` verbs:
-  `arm`, `doctor`, `provision`, `launch`, `closeout`.
-
-### How I actually use it
-
-The commands are the plumbing. A real session looks like this:
-
-1. **Talk it through first.** Before any CBR command, I have a normal
-   conversation with the agent about the feature: what it is, what it
-   touches, what "done" means. This is the spec. CBR doesn't replace it.
-2. **Hand it to CBR.** Once the shape is clear, I say something like "run
-   this feature build per CBR." The agent compiles the conversation into a
-   plan, gets my yes, and builds under the gates from there.
-3. **Or fan it out.** For bigger work: "parallelize this per CBR, you act as
-   orchestrator." The agent splits the plan into strands, spins up builder
-   sessions in their own worktrees, and watches them from outside.
-
-That's it. The discussion is where the thinking happens; CBR is what keeps
-the build honest once the thinking is done.
 
 ## What's inside
 
