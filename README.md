@@ -150,6 +150,23 @@ control plane" reach the same skills.
 - On Codex, the same lifecycle runs through `scripts/cbr-codex.sh` verbs:
   `arm`, `doctor`, `provision`, `launch`, `closeout`.
 
+### How I actually use it
+
+The commands are the plumbing. A real session looks like this:
+
+1. **Talk it through first.** Before any CBR command, I have a normal
+   conversation with the agent about the feature: what it is, what it
+   touches, what "done" means. This is the spec. CBR doesn't replace it.
+2. **Hand it to CBR.** Once the shape is clear, I say something like "run
+   this feature build per CBR." The agent compiles the conversation into a
+   plan, gets my yes, and builds under the gates from there.
+3. **Or fan it out.** For bigger work: "parallelize this per CBR, you act as
+   orchestrator." The agent splits the plan into strands, spins up builder
+   sessions in their own worktrees, and watches them from outside.
+
+That's it. The discussion is where the thinking happens; CBR is what keeps
+the build honest once the thinking is done.
+
 ## What's inside
 
 ```
