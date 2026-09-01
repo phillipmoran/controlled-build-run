@@ -1,0 +1,59 @@
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  suite:
+    name: verify suite + manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Manifest verifies at HEAD
+        run: ./verify-manifest.sh
+      - name: Core snapshots byte-identical
+        run: bash verify/core-mirrors.test.sh
+      - name: Behavioral suite
+        run: |
+          set -euo pipefail
+          git config --global user.email ci@example.invalid
+          git config --global user.name ci
+          for t in verify/*.test.sh; do
+            echo "--- $t"
+            bash "$t"
+          done
+
+  hygiene:
+    name: secrets + de-personalization
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (tree + history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: De-personalization sweep
+        # The operator's public handle in attribution (LICENSE, plugin
+        # metadata, repo URLs) is intentional; everything else personal is a
+        # leak. RELEASE-CHECKLIST.md carries the pattern itself.
+        run: |
+          set -uo pipefail
+          hits="$(grep -rniE 'phill|freebird|/Users/|@gmail|claw.clans|cbr-cockpit|canon' . \
+            --exclude-dir=.git \
+            --exclude=RELEASE-CHECKLIST.md \
+            --exclude=LICENSE \
+            --exclude=verify.yml \
+            | grep -vi 'canonical' \
+            | grep -v 'github.com/phillipmoran\|phillipmoran/controlled-build-run\|"phillipmoran"\|Phillip Moran' \
+            || true)"
+          if [ -n "$hits" ]; then
+            echo "de-personalization sweep found unexpected matches:" >&2
+            echo "$hits" >&2
+            exit 1
+          fi

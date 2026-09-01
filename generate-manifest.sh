@@ -11,4 +11,7 @@ if ! command -v sha256sum >/dev/null 2>&1; then
   sha_tool=(shasum -a 256)
 fi
 
-find . -type f ! -name 'MANIFEST.sha256' | sed 's|^\./||' | sort | xargs "${sha_tool[@]}" > MANIFEST.sha256
+# .git is pruned because this script also runs at the root of the standalone
+# package repo, where hashing repository internals would make the manifest
+# stale on every commit.
+find . -type f ! -name 'MANIFEST.sha256' ! -path './.git/*' | sed 's|^\./||' | sort | xargs "${sha_tool[@]}" > MANIFEST.sha256
