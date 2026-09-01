@@ -19,6 +19,11 @@ What the installers share and what they don't:
   re-injects, and the live proof — that harness's `doctor` and its
   prove-NO / prove-YES probe.
 
+Heads-up for either installer: the vendored package carries its own test
+files. Exclude the vendored folder (and `.agents/**` / `.claude/skills/**`)
+from the target repo's test-runner discovery before wiring the test gate,
+or a broad `vitest run` will collect them as project tests.
+
 A repo that will host both harnesses runs both installers. A repo armed for
 one harness is NOT armed for the other, and the other's `doctor` will say so.
 

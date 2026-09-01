@@ -8,16 +8,25 @@ blindly.
 
 ## Install
 
-1. Copy this package to `.agents/skills/codex-controlled-build-run/` or retain a
-   repository source copy at `skills/codex-controlled-build-run/`.
+1. Keep a source copy of this package in the repository (`skills/codex-controlled-build-run/`
+   or the vendored package). `arm` (step 4) installs the live copy at
+   `.agents/skills/codex-controlled-build-run/` from it when absent — do not
+   copy it there by hand.
 2. Install the pinned guard and judge SDK in the target repository:
 
    ```bash
-   npm install --save-dev @nizos/probity@1.10.0 @openai/codex-sdk
+   npm install --save-dev --save-exact @nizos/probity@1.10.0 @openai/codex-sdk
    ```
 
    Use the repository's package manager and lockfile policy instead of `npm`
-   when applicable.
+   when applicable. `--save-exact` matters: without it npm records `^1.10.0`
+   and the "pin" is only as exact as the lockfile.
+
+   **Test discovery:** this package carries its own Node test files
+   (`scripts/tests/*.test.mjs`). A broad `vitest run` / `jest` glob in the
+   target repository will collect them as project tests. Scope the target's
+   test `include`, or exclude `.agents/**`, `skills/**`, and the vendored
+   package folder, before wiring the test gate.
 3. Optionally install the sibling teaching skills this leaf's reground hook
    injects (the complexity ceiling is an optional per-project knob, not core
    law — install its skill only if your project wires the gate). From the kit
@@ -36,12 +45,15 @@ blindly.
 5. Replace every fail-closed placeholder in `.cbr-codex.json` and
    `.pre-commit-config.yaml`. Put repository-specific RoboRev rules in
    `.roborev.toml`; model values remain projected from `.cbr-codex.json` by
-   `cbr-codex.sh sync-models`.
+   `cbr-codex.sh sync-models`. Review the generated `record-ownership.json`
+   too — its template ships with example records and must be edited to name
+   this project's actual record files.
 6. Start the Codex terminal TUI in the repository. At the `Hooks need review`
    screen choose `Review hooks`, inspect every command and source, then use the
    on-screen trust action. Codex Desktop chat does not expose a `/hooks` command.
    Record the vetted hash with `cbr-codex.sh record-hook-trust`.
-7. Start RoboRev, run `cbr-codex.sh doctor`, then run the live
+7. Start RoboRev (`roborev daemon start`; `roborev status --json` must report
+   `running: true`), run `cbr-codex.sh doctor`, then run the live
    `cbr-codex.sh probe`. A repository is not armed until both pass.
 
 When developing this package inside its upstream source repo, run
