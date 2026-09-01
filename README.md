@@ -154,7 +154,7 @@ controlled-build-run/
 ├─ SETUP.md             ← start here: pick your harness
 ├─ SETUP-claude-code.md ← Claude Code installer
 ├─ MANIFEST.md          ← every file: source, verbatim vs template, where it installs
-├─ generate-manifest.sh ← refresh MANIFEST.sha256 after edits
+├─ generate-manifest.sh ← refresh MANIFEST.sha256 (pre-commit does this for you)
 ├─ verify-manifest.sh   ← integrity check of a copy against the manifest
 │
 ├─ skill/claude-controlled-build-run/   ← Claude Code adapter (SKILL.md, references/, scripts/cbr.sh)
@@ -178,9 +178,11 @@ The provider-neutral process law lives in the adapter snapshots
 are byte-identical by contract; `verify/core-mirrors.test.sh` enforces it.
 
 This repository is the canonical source. Its identity is `MANIFEST.sha256`, a
-content fingerprint of every file, plus `VERSION`. Regenerate the manifest
-with `./generate-manifest.sh` after any change, and check the integrity of a
-copy with `./verify-manifest.sh`. The package was extracted from a production
+content fingerprint of every shipped file, plus `VERSION`. Repo housekeeping
+(this README, CI, the plugin wrapper) is listed in `MANIFEST.ignore` and is
+not fingerprinted. `./generate-manifest.sh` refreshes the manifest (the
+repo's pre-commit hook runs it for you); `./verify-manifest.sh` checks the
+integrity of a copy. The package was extracted from a production
 deployment hardened in place across two host projects; the real configs from
 that reference host ship under `examples/` as worked references.
 

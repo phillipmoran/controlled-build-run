@@ -1,0 +1,12 @@
+# This repo's own hooks (not the template the package installs elsewhere).
+# One-time: `pre-commit install`. Then MANIFEST.sha256 regenerates itself on
+# every commit; if it changed, the commit stops once so you can stage it.
+repos:
+  - repo: local
+    hooks:
+      - id: manifest
+        name: regenerate MANIFEST.sha256
+        entry: ./generate-manifest.sh
+        language: script
+        pass_filenames: false
+        always_run: true

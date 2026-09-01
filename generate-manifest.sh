@@ -15,4 +15,24 @@ fi
 # package repo, where hashing repository internals would make the manifest
 # stale on every commit. Both forms matter: a directory in a normal clone,
 # a gitdir-pointer FILE in a linked worktree.
-find . -type f ! -name 'MANIFEST.sha256' ! -path './.git' ! -path './.git/*' | sed 's|^\./||' | sort | xargs "${sha_tool[@]}" > MANIFEST.sha256
+# MANIFEST.ignore (optional, one glob per line, # comments) names files that
+# live in the repo but do not ship — README, CI, plugin wrapper. The manifest
+# is the fingerprint of the ARTIFACT, not of repo housekeeping, so editing a
+# doc must not stale it. Absent the file (the kit directory), everything ships.
+patterns=()
+if [ -f MANIFEST.ignore ]; then
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue;; esac
+    patterns+=("$line")
+  done < MANIFEST.ignore
+fi
+shipped() {
+  local f="$1" p
+  for p in "${patterns[@]+"${patterns[@]}"}"; do
+    case "$f" in $p) return 1;; esac
+  done
+  return 0
+}
+find . -type f ! -name 'MANIFEST.sha256' ! -path './.git' ! -path './.git/*' | sed 's|^\./||' | sort \
+  | while IFS= read -r f; do shipped "$f" && printf '%s\n' "$f"; done \
+  | xargs "${sha_tool[@]}" > MANIFEST.sha256

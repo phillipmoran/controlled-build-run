@@ -38,7 +38,10 @@ Rules that keep the package coherent:
   glossary). No personal names, machine paths, or private project names.
 - **Vocabulary.** CBR is a *control plane*. A *harness* is an agent runtime
   (Claude Code, Codex) that CBR plugs into. Keep the two words apart.
-- **Refresh the manifest.** After any edit: `./generate-manifest.sh`, and
-  commit the updated `MANIFEST.sha256` in the same commit.
+- **The manifest refreshes itself.** Run `pre-commit install` once; the
+  hook regenerates `MANIFEST.sha256` on every commit and stops the commit
+  once if it changed so you can stage it. Docs and the plugin wrapper are
+  in `MANIFEST.ignore` and never stale it. CI verifies the manifest at HEAD
+  regardless.
 - **Run the suite.** `for t in verify/*.test.sh; do bash "$t" || exit 1; done`
   before opening a PR (one test takes ~2 minutes; that's normal).

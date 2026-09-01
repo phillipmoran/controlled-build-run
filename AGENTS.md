@@ -19,8 +19,9 @@ Route by intent — read only what the task needs:
 
 Invariants (checked by CI, cheaper to honor than to discover):
 
-- Regenerate `MANIFEST.sha256` (`./generate-manifest.sh`) in the same commit
-  as any content change.
+- `MANIFEST.sha256` must match HEAD. The pre-commit hook regenerates it;
+  without the hook, run `./generate-manifest.sh` before committing package
+  content. Files in `MANIFEST.ignore` (docs, CI, plugin wrapper) don't count.
 - The two core snapshots stay byte-identical (`verify/core-mirrors.test.sh`).
 - Person-neutral text: the human is the **operator**; no personal names,
   machine paths, or private project names.

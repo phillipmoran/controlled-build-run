@@ -1,0 +1,15 @@
+# Repo housekeeping that does not ship in the vendored package.
+# The manifest fingerprints the artifact; these can change freely.
+README.md
+CONTRIBUTING.md
+AGENTS.md
+CHANGELOG.md
+ROADMAP.md
+UPDATING.md
+LICENSE
+RELEASE-CHECKLIST.md
+MANIFEST.ignore
+.pre-commit-config.yaml
+.github/*
+.claude-plugin/*
+skills/*
