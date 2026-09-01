@@ -13,9 +13,11 @@ What the installers share and what they don't:
   Probity config (`probity.config.ts`). Whichever installer runs first
   writes them; the second merges into what is already there.
 - **Per harness, installed by each:** the session hooks (Claude Code's
-  `.claude/settings.json`; Codex's `.cbr-codex.json` plus hook approval in
-  the Codex TUI), the skill copy the re-ground hook re-injects, and the live
-  proof — that harness's `doctor` and its prove-NO / prove-YES probe.
+  `.claude/settings.json`; Codex's `.codex/hooks.json`, which the Codex TUI
+  must approve before it fires), that harness's project dial where it has
+  one (Codex's `.cbr-codex.json`), the skill copy the re-ground hook
+  re-injects, and the live proof — that harness's `doctor` and its
+  prove-NO / prove-YES probe.
 
 A repo that will host both harnesses runs both installers. A repo armed for
 one harness is NOT armed for the other, and the other's `doctor` will say so.
