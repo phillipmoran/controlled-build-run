@@ -33,6 +33,14 @@ shipped() {
   done
   return 0
 }
-find . -type f ! -name 'MANIFEST.sha256' ! -path './.git' ! -path './.git/*' | sed 's|^\./||' | sort \
-  | while IFS= read -r f; do shipped "$f" && printf '%s\n' "$f"; done \
-  | xargs "${sha_tool[@]}" > MANIFEST.sha256
+shipped_files() {
+  find . -type f ! -name 'MANIFEST.sha256' ! -path './.git' ! -path './.git/*' | sed 's|^\./||' | sort \
+    | while IFS= read -r f; do shipped "$f" && printf '%s\n' "$f"; done
+}
+# --list prints the shipped path set and stops. The drift gate (export.sh
+# --check) uses it so generation and validation share ONE discovery rule.
+if [ "${1:-}" = "--list" ]; then
+  shipped_files
+  exit 0
+fi
+shipped_files | xargs "${sha_tool[@]}" > MANIFEST.sha256
