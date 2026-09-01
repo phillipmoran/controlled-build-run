@@ -83,6 +83,20 @@ arms nothing; the check proves it.
 
 ## Getting started
 
+### As a Claude Code plugin (easiest)
+
+```
+/plugin marketplace add phillipmoran/controlled-build-run
+/plugin install controlled-build-run@phillipmoran
+```
+
+Then open the target repo and type `/cbr`. It will notice the repo is not
+armed yet and offer `/cbr-setup`, which vendors this whole package into the
+repo — so the same repo also serves Codex sessions and teammates who never
+installed the plugin.
+
+### Manual (any harness)
+
 1. Copy this whole folder into the target repo (or clone it there).
 2. Choose the setup for the coding agent you will use:
    - **Claude Code:** point Claude at [`SETUP.md`](SETUP.md).
@@ -96,6 +110,23 @@ arms nothing; the check proves it.
 Do not send Codex through the root `SETUP.md`; that file is the Claude Code
 installer. Each setup installs its adapter, hooks, Probity judge, commit
 gates, review wiring, and compaction recovery from one entry point.
+
+## How to use CBR
+
+Once the plugin is installed, five slash commands cover the whole lifecycle.
+Plain words work too — "set up CBR in this project" or "do this per the CBR
+control plane" reach the same skills.
+
+- `/cbr` — the front door. Checks the repo's state and routes you: not
+  armed → offers setup, no plan → plan, plan ready → build.
+- `/cbr-setup` — arms a repo. Vendors the package, adapts the configs to
+  your stack, and proves the gates actually fire.
+- `/cbr-doctor` — read-only health check: what's armed, what's dead, what
+  to do about it.
+- `/cbr-plan` — compiles planning output you already have (a design
+  conversation, a PRD, a Wayfinder session) into a gated plan file.
+- `/cbr-build` — executes the current plan under the loop, solo or as an
+  orchestrated fleet, whichever the plan calls for.
 
 ## What's inside
 
@@ -112,10 +143,14 @@ controlled-build-run/
 ├─ sibling-skills/      ← planning-with-files + test-driven-development +
 │                         cyclomatic-complexity (required);
 │                         fusion, stage-review, closeout (optional)
-├─ harness/             ← the arming: hook scripts (verbatim), the settings hooks
+├─ control-plane/       ← the arming: hook scripts (verbatim), the settings hooks
 │                         block to merge, and config templates to fill in
-├─ examples/            ← real configs from the reference host, as worked references
-└─ verify/              ← CBR's own regression suite + smoke.sh static arming check
+├─ examples/            ← real configs from the reference host, plus a worked
+│                         example of composing CBR with an external planner
+├─ verify/              ← CBR's own regression suite + smoke.sh static arming check
+│
+├─ skills/              ← Claude Code plugin layer (/cbr commands); repo-native,
+└─ .claude-plugin/        not vendored into target repos
 ```
 
 The provider-neutral process law lives in the adapter snapshots

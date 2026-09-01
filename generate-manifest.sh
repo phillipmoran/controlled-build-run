@@ -13,5 +13,6 @@ fi
 
 # .git is pruned because this script also runs at the root of the standalone
 # package repo, where hashing repository internals would make the manifest
-# stale on every commit.
-find . -type f ! -name 'MANIFEST.sha256' ! -path './.git/*' | sed 's|^\./||' | sort | xargs "${sha_tool[@]}" > MANIFEST.sha256
+# stale on every commit. Both forms matter: a directory in a normal clone,
+# a gitdir-pointer FILE in a linked worktree.
+find . -type f ! -name 'MANIFEST.sha256' ! -path './.git' ! -path './.git/*' | sed 's|^\./||' | sort | xargs "${sha_tool[@]}" > MANIFEST.sha256
