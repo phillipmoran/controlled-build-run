@@ -50,7 +50,7 @@ jobs:
             --exclude=LICENSE \
             --exclude=verify.yml \
             | grep -vi 'canonical' \
-            | grep -v 'github.com/phillipmoran\|phillipmoran/controlled-build-run\|"phillipmoran"\|Phillip Moran' \
+            | grep -v 'github.com/phillipmoran\|phillipmoran/controlled-build-run\|controlled-build-run@phillipmoran\|"phillipmoran"\|Phillip Moran' \
             || true)"
           if [ -n "$hits" ]; then
             echo "de-personalization sweep found unexpected matches:" >&2
