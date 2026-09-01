@@ -93,7 +93,13 @@ arms nothing; the check proves it.
 
 ## Getting started
 
-### As a Claude Code plugin (easiest)
+CBR is vendored into your repo once, then armed per harness. The repo-level
+gates (pre-commit wall, review config, Probity config) are shared; each
+harness installs its own session hooks and runs its own proof. Pick yours:
+
+### Claude Code
+
+Plugin (easiest):
 
 ```
 /plugin marketplace add phillipmoran/controlled-build-run
@@ -102,28 +108,28 @@ arms nothing; the check proves it.
 
 Then open the target repo and type `/cbr`. It will notice the repo is not
 armed yet and offer `/cbr-setup`, which vendors this whole package into the
-repo — so the same repo also serves Codex sessions and teammates who never
-installed the plugin.
+repo (both adapters included) and runs the Claude Code installer.
 
-### Manual (any harness)
+Manual: copy this whole folder into the repo and point Claude at
+[`SETUP-claude-code.md`](SETUP-claude-code.md).
 
-1. Copy this whole folder into the target repo (or clone it there).
-2. Choose the setup for the coding agent you will use:
-   - **Claude Code:** point Claude at [`SETUP.md`](SETUP.md).
-   - **Codex:** point Codex at
-     [`skill/codex-controlled-build-run/SETUP.md`](skill/codex-controlled-build-run/SETUP.md).
-3. Do the setup's human trust/login steps on the new machine. Everything else
-   the agent can do.
-4. Run the provider's `doctor` and the live Probity probe. CBR is not armed
-   until both pass.
+### Codex
 
-Do not send Codex through the root `SETUP.md`; that file is the Claude Code
-installer. Each setup installs its adapter, hooks, Probity judge, commit
-gates, review wiring, and compaction recovery from one entry point.
+Copy this whole folder into the repo and point Codex at
+[`skill/codex-controlled-build-run/SETUP.md`](skill/codex-controlled-build-run/SETUP.md).
+
+### Both
+
+Run both installers in the same repo. The second merges into the shared
+config the first wrote; each installs its own hooks.
+
+Whichever you pick: do the setup's human trust/login steps on each machine
+(everything else the agent can do), then run that harness's `doctor` and
+live Probity probe. CBR is not armed for a harness until both pass there.
 
 ## How to use CBR
 
-Once the plugin is installed, five slash commands cover the whole lifecycle.
+In Claude Code, five slash commands cover the whole lifecycle.
 Plain words work too — "set up CBR in this project" or "do this per the CBR
 control plane" reach the same skills.
 
@@ -137,13 +143,16 @@ control plane" reach the same skills.
   conversation, a PRD, a Wayfinder session) into a gated plan file.
 - `/cbr-build` — executes the current plan under the loop, solo or as an
   orchestrated fleet, whichever the plan calls for.
+- On Codex, the same lifecycle runs through `scripts/cbr-codex.sh` verbs:
+  `arm`, `doctor`, `provision`, `launch`, `closeout`.
 
 ## What's inside
 
 ```
 controlled-build-run/
 ├─ README.md            ← you are here
-├─ SETUP.md             ← Claude Code entry point
+├─ SETUP.md             ← start here: pick your harness
+├─ SETUP-claude-code.md ← Claude Code installer
 ├─ MANIFEST.md          ← every file: source, verbatim vs template, where it installs
 ├─ generate-manifest.sh ← refresh MANIFEST.sha256 after edits
 ├─ verify-manifest.sh   ← integrity check of a copy against the manifest

@@ -5,7 +5,8 @@ re-vendor, not a `git pull`:
 
 1. Read this repo's `CHANGELOG.md` for what changed since your `VERSION`.
 2. Replace the vendored `controlled-build-run/` folder with the new package.
-3. Re-run `SETUP.md`'s merge step for anything you adapted: your filled
+3. Re-run your harness installer's merge step (`SETUP.md` routes to it) for
+   anything you adapted: your filled
    configs (`probity.config.ts`, `.pre-commit-config.yaml`, `.roborev.toml`)
    and installed hooks may lag new templates. Diff template against
    installed copy; merge, don't blind-overwrite — in either direction.
