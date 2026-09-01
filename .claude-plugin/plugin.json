@@ -1,0 +1,28 @@
+{
+  "name": "controlled-build-run",
+  "version": "0.12.0",
+  "description": "CBR: a harness-agnostic control plane for long-running coding agents. Durable plans, deterministic gates, independent review, compaction recovery.",
+  "author": {
+    "name": "Phillip Moran",
+    "url": "https://github.com/phillipmoran/controlled-build-run"
+  },
+  "homepage": "https://github.com/phillipmoran/controlled-build-run",
+  "repository": "https://github.com/phillipmoran/controlled-build-run",
+  "license": "MIT",
+  "keywords": [
+    "control-plane",
+    "cbr",
+    "tdd",
+    "code-review",
+    "gates",
+    "agents",
+    "orchestration"
+  ],
+  "skills": [
+    "./skills/cbr",
+    "./skills/cbr-setup",
+    "./skills/cbr-doctor",
+    "./skills/cbr-plan",
+    "./skills/cbr-build"
+  ]
+}

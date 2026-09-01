@@ -1,0 +1,14 @@
+{
+  "name": "phillipmoran",
+  "owner": {
+    "name": "Phillip Moran",
+    "url": "https://github.com/phillipmoran"
+  },
+  "plugins": [
+    {
+      "name": "controlled-build-run",
+      "source": "./",
+      "description": "CBR: a harness-agnostic control plane for long-running coding agents."
+    }
+  ]
+}

@@ -259,8 +259,14 @@ done
 
 # --- the LIVE wiring in this repo, not just the template ------------------
 # The template is what a port installs; this file is what actually fires here.
+# Canonical layout only: when this suite runs from the standalone package,
+# $root is whatever directory happens to contain the package, and a
+# .claude/settings.json found there belongs to some other repo — judging it
+# would break hermeticity. The layout is identified structurally (this file
+# sits at $root/kit/verify only in the source repo), not by the presence of
+# installable pieces a target repo could legitimately carry.
 live_settings="$root/.claude/settings.json"
-if [ -f "$live_settings" ]; then
+if [ "$here" = "$root/kit/verify" ] && [ -f "$live_settings" ]; then
   python3 - "$live_settings" <<'PY' || fail "this repo's .claude/settings.json declares no Stop hook running builder-stop-check.sh — the gate is installed everywhere except where it is running"
 import json, sys
 cfg = json.load(open(sys.argv[1]))
