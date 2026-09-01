@@ -21,8 +21,12 @@ agent's.
       checkout.
 - [ ] **Core snapshots identical.** `verify/core-mirrors.test.sh` (also
       covered by the suite).
-- [ ] **README quickstart walked once** on a scratch repo by an agent with no
-      other context.
+- [ ] **Credits complete.** `THIRD-PARTY.md` names every tool CBR drives and
+      every vendored skill with its origin and license; each vendored skill
+      carries its upstream license file beside it.
+- [ ] **Install walked once per harness** on a scratch repo by an agent with
+      no other context — Claude Code (plugin path) AND Codex. Setup arms one
+      harness at a time; a pass on one proves nothing about the other.
 - [ ] **Operator has read the repo end-to-end** and says, in so many words,
       "looks good, let's go public."
 

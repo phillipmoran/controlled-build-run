@@ -12,6 +12,10 @@ claims what exists.
   template, or build one from the porting docs (~30 files).
 - **Marketplace listing** — submit the plugin to community and official
   Claude Code marketplaces once the repo is public.
+- **Fold planning-with-files into CBR's own templates** — CBR now owns the
+  plan format (`task_plan.skeleton.md`), the stop gate, and the re-ground;
+  what remains of the vendored skill is the idea plus a Stop hook that
+  needs an awkward user-level install. Retire it cleanly, keep the credit.
 - **Update path hardening** — today updating a vendored package is a
   re-vendor + re-run of setup (see UPDATING.md); a proper migration flow
   that diffs operator-adapted configs against new templates is wanted.
