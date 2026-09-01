@@ -19,10 +19,13 @@ is enforced while you're away.
 
 ## When to use CBR
 
-On extended agent development tasks, especially tasks where
-* You expect compaction (e.g., tasks >45 minutes)
-* You would like programmatically enforced guardrails for your agent
-* You want a control-plane that does not vendor lock you to a provider
+Reach for CBR when the work is long enough to go wrong on its own:
+
+- It'll run past a context compaction (about 45 minutes or more).
+- You want to walk away and trust what's there when you get back.
+- You need rules the agent can't forget or talk itself out of.
+- You use more than one harness (Claude Code and Codex) and want one
+  process across both.
 
 ## How to use CBR
 
