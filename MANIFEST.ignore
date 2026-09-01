@@ -13,3 +13,4 @@ MANIFEST.ignore
 .github/*
 .claude-plugin/*
 skills/*
+THIRD-PARTY.md

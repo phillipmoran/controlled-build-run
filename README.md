@@ -13,6 +13,10 @@ The point is that you can walk away. Hand off the work, go do something
 else, let it run overnight or across days, and trust that the process
 is enforced while you're away.
 
+[![Watch: Controlled-Build-Run in practice](https://img.youtube.com/vi/G7ZofvCeaNE/maxresdefault.jpg)](https://youtu.be/G7ZofvCeaNE)
+
+*Video: what CBR does and why, in practice.*
+
 ## When to use CBR
 
 On extended agent development tasks, especially tasks where
@@ -197,6 +201,18 @@ that reference host ship under `examples/` as worked references.
   docs. The package ships the engine verbatim and the configs as templates,
   with the reference host's originals in `examples/` as worked references.
   The setup agent fills the templates in during setup.
+
+## Built on
+
+CBR drives [Probity](https://github.com/nizos/probity) (write-time TDD
+judge), [RoboRev](https://github.com/kenn-io/roborev) (AI code review),
+[gitleaks](https://github.com/gitleaks/gitleaks), and
+[pre-commit](https://github.com/pre-commit/pre-commit). It vendors skills
+from [obra/superpowers](https://github.com/obra/superpowers) (TDD),
+[saurabhkumar8112/cyclomatic-complexity-skill](https://github.com/saurabhkumar8112/cyclomatic-complexity-skill),
+and [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files),
+and adapts [duolahypercho/fusion-fable](https://github.com/duolahypercho/fusion-fable).
+Licenses and details: [`THIRD-PARTY.md`](THIRD-PARTY.md).
 
 ## The honest boundary
 

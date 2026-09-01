@@ -1,5 +1,6 @@
 {
   "name": "phillipmoran",
+  "description": "Controlled-Build-Run (CBR): a harness-agnostic control plane for long-running coding agents.",
   "owner": {
     "name": "Phillip Moran",
     "url": "https://github.com/phillipmoran"
