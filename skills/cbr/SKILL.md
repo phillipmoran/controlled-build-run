@@ -14,10 +14,14 @@ order. Do not skip ahead; each step's outcome decides the next.
 
 ## 1. Is the control plane armed here?
 
-Look for the vendored package (a `controlled-build-run/` folder at the repo
-root, or `skill/claude-controlled-build-run/` if this repo IS the package)
-and run its doctor / static check (`verify/smoke.sh` from the package, or the
-leaf's `cbr.sh doctor`). Read the PASS/FAIL lines yourself.
+Find the Claude Code leaf. It lives in one of three places:
+
+- `controlled-build-run/skill/claude-controlled-build-run/` — vendored package
+- `skills/claude-controlled-build-run/` — a repo that keeps a source copy
+- `skill/claude-controlled-build-run/` — this repo IS the package
+
+Run its `scripts/cbr.sh doctor` (or the package's `verify/smoke.sh`) and
+read the PASS/FAIL lines yourself.
 
 - **Not armed:** stop and offer `/cbr-setup`. Do NOT run setup silently —
   it is heavy (stack detection, config adaptation, live probes) and its
@@ -43,6 +47,6 @@ Read `task_plan.md` at the worktree root.
 
 Invoke `/cbr-build` against the confirmed plan.
 
-That's the whole router. The law lives in the package
-(`skill/claude-controlled-build-run/SKILL.md` and its references); read the
+That's the whole router. The law lives in the leaf's `SKILL.md` and its
+`references/` (at whichever of the three paths above you found); read the
 piece you need when you need it rather than loading everything now.

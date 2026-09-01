@@ -16,9 +16,9 @@ already made.
 
 ## The contract shape
 
-Follow the plan law in the vendored package
-(`controlled-build-run/skill/claude-controlled-build-run/SKILL.md` and its
-plan references). The non-negotiables:
+Follow the plan law in the Claude Code leaf's `SKILL.md` and its plan
+references (the leaf is at `controlled-build-run/skill/`, `skills/`, or
+`skill/` + `claude-controlled-build-run/`, whichever this repo uses). The non-negotiables:
 
 - `task_plan.md` at the worktree root, with `**Run type:**` and
   `**Branch:**` header lines.

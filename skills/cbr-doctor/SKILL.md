@@ -14,9 +14,10 @@ operator asked.
 
 ## What to check
 
-1. **Package present?** `controlled-build-run/` at the repo root (or this repo
-   IS the package). Missing → report "not armed" and stop; suggest
-   `/cbr-setup`.
+1. **Leaf present?** Look for `claude-controlled-build-run/` under
+   `controlled-build-run/skill/` (vendored), `skills/` (source copy), or
+   `skill/` (this repo is the package). Missing → report "not armed" and
+   stop; suggest `/cbr-setup`.
 2. **Static suite:** run the package's `verify/smoke.sh` and report its
    PASS/FAIL lines verbatim. This checks hooks installed, configs present,
    templates unmodified where they must match.

@@ -22,15 +22,15 @@ Read the plan's shape, not its word count:
 - **Fleet** (orchestrate builders): the plan names independent strands that
   can proceed in parallel worktrees. Then this session is the orchestrator
   and the fleet law in the package core
-  (`.../references/core/modes/fleet.md`) governs: one strand per
+  (the leaf's `references/core/modes/fleet.md`) governs: one strand per
   branch↔plan↔worktree↔session, watchers on terminal markers, stop-before-
   DONE enforced per builder.
 
 ## The loop
 
-The build law lives in the vendored package — read
-`controlled-build-run/skill/claude-controlled-build-run/SKILL.md` before the
-first edit and follow it, not memory. What the loop looks like from the
+The build law lives in the Claude Code leaf — read its `SKILL.md` (under
+`controlled-build-run/skill/`, `skills/`, or `skill/`, whichever this repo
+uses) before the first edit and follow it, not memory. What the loop looks like from the
 operator's chair:
 
 - Work one phase at a time, in plan order.
