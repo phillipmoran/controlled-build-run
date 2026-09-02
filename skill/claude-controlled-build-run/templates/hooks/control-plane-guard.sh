@@ -45,6 +45,9 @@ tmp="$(mktemp 2>/dev/null)" || {
 trap 'rm -f "$tmp"' EXIT
 printf '%s' "$payload" > "$tmp"
 
+# NOTE: macOS ships bash 3.2, whose parser tracks quotes inside a heredoc within
+# $(...): keep the apostrophe count in the block below EVEN, or the hook dies
+# with "unexpected EOF" and every tool call is denied (fail closed, but noisy).
 reason="$(python3 - "$tmp" <<'PY'
 import json, re, shlex, sys
 
@@ -78,10 +81,12 @@ if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
 BYPASS_ARG = re.compile(r"^--no-verify(=|$)|hooksPath|merge\.ff")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?^\2[ \t]*$", re.S | re.M)
 SHORT_CLUSTER = re.compile(r"^-[a-zA-Z]+$")
+GIT_GLOBAL_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace",
+                         "--config-env", "--super-prefix", "--exec-path", "--attr-source"}
 
 def git_bypass(cmd):
     """The bypass idioms, judged on the ARGUMENTS git would receive: shell
-    quoting is honoured (so 'merge.ff' quoted is still the key git sees) and
+    quoting is honoured (a quoted merge.ff is still the key git sees) and
     only commit-message values are exempt (prose that names a bypass is not
     one). Heredoc bodies are message/file content, not arguments."""
     body = HEREDOC.sub("", cmd)
@@ -106,6 +111,13 @@ def git_bypass(cmd):
         args, sub, i = seg[gi + 1:], None, 0
         while i < len(args):
             a = args[i]
+            if sub is None and a in GIT_GLOBAL_WITH_VALUE:
+                # the git globals that take a value sit BEFORE the subcommand:
+                # `git -C repo commit -n` must still read as commit -n, and
+                # the value itself (-c core.hooksPath=…) is still judged
+                if i + 1 < len(args) and BYPASS_ARG.search(args[i + 1]):
+                    return True
+                i += 2; continue
             if a in ("-m", "--message", "-F", "--file"):
                 i += 2; continue
             if a.startswith("--message=") or a.startswith("--file="):
@@ -131,7 +143,7 @@ if tool == "Bash":
         print("the git command carries a gate bypass (--no-verify / -n / core.hooksPath / merge.ff)")
         sys.exit(0)
     if re.search(r"\bCBR_CONTROL_PLANE_UNLOCK=", cmd):
-        print("the command sets the operator unlock token — that token is the operator's to set, never the agent's")
+        print("the command sets the operator unlock token — that token is for the operator to set, never the agent")
         sys.exit(0)
     TOKEN = (r"(\.claude/hooks/(?!post-compact-reground\.sh)|\.claude/settings\.json|"
              r"(?<![\w.])\.git/|merge-review-gate\.sh|record-single-source\.sh)")

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.2 — 2026-09-02
+
+- **Control-plane guard: git global options no longer hide `commit -n`.**
+  `git -C repo commit -n` read `repo` as the subcommand and let `-n`
+  (which is `--no-verify`) through. The guard now consumes the values of
+  git's value-taking global options (`-C`, `-c`, `--git-dir`,
+  `--work-tree`, `--namespace`, `--config-env`, `--super-prefix`,
+  `--exec-path`, `--attr-source`) before locating the subcommand, and still
+  judges each value. Four new deny cases, two new allow cases.
+
 ## 0.13.1 — 2026-09-02
 
 - **Control-plane guard: quoted git arguments no longer slip past.** The
