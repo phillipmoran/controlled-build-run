@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1 — 2026-09-02
+
+- **Control-plane guard: quoted git arguments no longer slip past.** The
+  0.13.0 guard blanked quoted strings before looking for bypass idioms, so
+  `git commit '--no-verify'`, `git config 'merge.ff' true`, and
+  `git -c 'core.hooksPath=…'` were allowed (found by the per-commit
+  reviewer). The guard now tokenizes the command the way the shell does and
+  inspects the arguments git would receive; only commit-message values are
+  exempt, heredoc bodies are content, and unbalanced quoting fails closed.
+  Nine new deny cases and five new allow cases in
+  `verify/control-plane-guard.test.sh`.
+
 ## 0.13.0 — 2026-09-02
 
 Fixes from the first external review of the public package.

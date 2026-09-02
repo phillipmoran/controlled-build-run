@@ -46,7 +46,7 @@ trap 'rm -f "$tmp"' EXIT
 printf '%s' "$payload" > "$tmp"
 
 reason="$(python3 - "$tmp" <<'PY'
-import json, re, sys
+import json, re, shlex, sys
 
 try:
     with open(sys.argv[1], encoding="utf-8") as fh:
@@ -75,17 +75,60 @@ if tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
         print(f"{tool} targets a control-plane file: {path}")
     sys.exit(0)
 
+BYPASS_ARG = re.compile(r"^--no-verify(=|$)|hooksPath|merge\.ff")
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?^\2[ \t]*$", re.S | re.M)
+SHORT_CLUSTER = re.compile(r"^-[a-zA-Z]+$")
+
+def git_bypass(cmd):
+    """The bypass idioms, judged on the ARGUMENTS git would receive: shell
+    quoting is honoured (so 'merge.ff' quoted is still the key git sees) and
+    only commit-message values are exempt (prose that names a bypass is not
+    one). Heredoc bodies are message/file content, not arguments."""
+    body = HEREDOC.sub("", cmd)
+    try:
+        lex = shlex.shlex(body, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        # unbalanced quoting: nothing can be exempted safely, so fail closed
+        return re.search(r"\bgit\b", body) and re.search(r"--no-verify|hooksPath|merge\.ff", body)
+    segs, cur = [], []
+    for t in toks:
+        if t and all(c in "|&;" for c in t):
+            segs.append(cur); cur = []
+        else:
+            cur.append(t)
+    segs.append(cur)
+    for seg in segs:
+        gi = next((i for i, t in enumerate(seg) if t == "git" or t.endswith("/git")), None)
+        if gi is None:
+            continue
+        args, sub, i = seg[gi + 1:], None, 0
+        while i < len(args):
+            a = args[i]
+            if a in ("-m", "--message", "-F", "--file"):
+                i += 2; continue
+            if a.startswith("--message=") or a.startswith("--file="):
+                i += 1; continue
+            if SHORT_CLUSTER.match(a):
+                if sub == "commit" and "n" in a[1:]:
+                    return True                      # -n is --no-verify
+                if a.startswith("-m") and len(a) > 2 and not a.endswith("m"):
+                    i += 1; continue                  # -m<msg>
+                if a.endswith("m") or a.endswith("F"):
+                    i += 2; continue                  # -am <msg>, -sF <file>
+                i += 1; continue
+            if BYPASS_ARG.search(a):
+                return True
+            if sub is None and not a.startswith("-"):
+                sub = a
+            i += 1
+    return False
+
 if tool == "Bash":
     cmd = str(inp.get("command", ""))
-    # outright bypasses, judged in git-command context with quoted strings
-    # blanked, so prose that merely names them (a commit message, a doc line)
-    # is not a bypass
-    unquoted = re.sub(r"'[^']*'|\"[^\"]*\"", "''", cmd)
-    if re.search(r"\bgit\b[^|;&\n]*(--no-verify|\bhooksPath\b|\bmerge\.ff\b)", unquoted):
-        print("the git command carries a gate bypass (--no-verify / core.hooksPath / merge.ff)")
-        sys.exit(0)
-    if re.search(r"\bgit\b[^|;&\n]*\bcommit\b[^|;&\n]*\s-[a-zA-Z]*n\b", unquoted):
-        print("git commit -n skips the commit hooks (it is --no-verify)")
+    if git_bypass(cmd):
+        print("the git command carries a gate bypass (--no-verify / -n / core.hooksPath / merge.ff)")
         sys.exit(0)
     if re.search(r"\bCBR_CONTROL_PLANE_UNLOCK=", cmd):
         print("the command sets the operator unlock token — that token is the operator's to set, never the agent's")
