@@ -492,6 +492,18 @@ cmd_arm() {
     fails=$((fails + 1))
   fi
 
+  # A fast-forward merge creates no commit and fires no commit hook, so a
+  # fresh branch merged into an unmoved integration branch skips the review
+  # wall by default. Every merge must be a merge commit for the wall to stand.
+  if [ "$(git -C "$target" config --get merge.ff 2>/dev/null)" = "false" ]; then
+    fact "merge.ff" "false (every merge is a merge commit; the wall fires)"
+  elif git -C "$target" config merge.ff false; then
+    fact "merge.ff" "set to false (fast-forward merges would bypass the merge wall)"
+  else
+    fail "merge.ff" "could not set merge.ff=false — fast-forward merges bypass the review wall"
+    fails=$((fails + 1))
+  fi
+
   local rr_hook rr_name
   for rr_name in post-commit post-rewrite; do
     rr_hook="$(git -C "$target" rev-parse --path-format=absolute --git-path "hooks/$rr_name")"
@@ -596,6 +608,12 @@ cmd_doctor() {
     fact "Git pre-merge-commit" "$pre_merge"
   else
     fail "Git pre-merge-commit" "no gate-running hook at $pre_merge — auto-committing merges bypass the battery; run: pre-commit install --hook-type pre-merge-commit"; fails=$((fails+1))
+  fi
+  # No commit hook fires on a fast-forward merge; the wall needs merge commits.
+  if [ "$(git -C "$root" config --get merge.ff 2>/dev/null)" = "false" ]; then
+    fact "merge.ff" "false"
+  else
+    fail "merge.ff" "not false — a fast-forward merge fires no commit hook and bypasses the review wall; run: git config merge.ff false"; fails=$((fails+1))
   fi
   # The verdict is the shared library's, not this script's: a guard on the
   # branch that auto-deploys may not be graded by two implementations that can

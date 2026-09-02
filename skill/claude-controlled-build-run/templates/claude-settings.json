@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh -c 'ANTHROPIC_MODEL=claude-sonnet-5; export ANTHROPIC_MODEL; if [ -x node_modules/.bin/probity ]; then node_modules/.bin/probity --agent claude-code; else npx --yes @nizos/probity@1.8.1 --agent claude-code; fi'"
+            "command": "sh -c 'ANTHROPIC_MODEL=claude-sonnet-5; export ANTHROPIC_MODEL; if [ -x node_modules/.bin/probity ]; then node_modules/.bin/probity --agent claude-code; else npx --yes @nizos/probity@1.10.0 --agent claude-code; fi'"
           }
         ]
       },
@@ -17,6 +17,16 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/no-interactive-ask.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/control-plane-guard.sh",
             "timeout": 10
           }
         ]

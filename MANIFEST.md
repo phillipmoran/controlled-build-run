@@ -1,89 +1,86 @@
 # MANIFEST — every file, its source, and where it installs
 
-GENERATED from the upstream control-plane source; this copy is identified by
-content (`MANIFEST.sha256` + `VERSION`), not by a source-commit stamp — see
-`README.md` for why a commit stamp cannot be correct here.
-`kit/export.sh` rebuilds the generated areas (`skill/`,
-`sibling-skills/{planning-with-files,test-driven-development}`, and
-`control-plane/hooks/`); everything else is kit-native and hand-maintained.
-Originally extracted from the reference host. Tool versions
-observed at last regeneration: `claude 2.1.x`, `roborev v0.58+`,
-`@nizos/probity@1.10.0` (TDD judge = codex, model pinned per-thread in
-probity.config.ts), node 24 / pnpm 10.
+This package is GENERATED from the upstream control-plane source; this copy is
+identified by content (`MANIFEST.sha256` + `VERSION`), not by a source-commit
+stamp. The generated areas are `skill/` (both leaves, each carrying a
+byte-identical snapshot of the provider-neutral core) and
+`sibling-skills/{planning-with-files,test-driven-development,cyclomatic-complexity}`;
+everything else is package-native and hand-maintained. Tool versions observed
+at last regeneration: `claude 2.1.x`, `roborev v0.67`, `@nizos/probity@1.10.0`
+(the pin in both leaves' hook commands), node 24.
 
 **Copy mode:** VERBATIM = use as-is · TEMPLATE = edit per repo · EXTERNAL = installed
 tool, not a file · HUMAN = secret/auth, never copied.
 
-## The skill — `skill/claude-controlled-build-run/`
+## The Claude Code leaf — `skill/claude-controlled-build-run/`
 
-| File | Upstream source | Mode | Installs to | Notes |
-|---|---|---|---|---|
-| `SKILL.md` | `skills/claude-controlled-build-run/SKILL.md` | ~VERBATIM | `<repo>/skills/claude-controlled-build-run/` | Policy + why. Re-point reference-host specifics per `PORTING.md`. |
-| `references/agent-harness-spec.md` | same | ~VERBATIM | with the skill | Per-piece verify/install + the porting caveat. |
-| `references/acceptance-checklist.md` | same | VERBATIM | with the skill | The invariant contract (A–K). |
-| `scripts/cbr.sh` | same | TEMPLATE (light) | with the skill | Dispatch rail. Edit the declared constants — `PORTING.md` has the full table. Optional (fleet only). |
-| `scripts/captain-watch.sh` | same | VERBATIM | with the skill | Builder watchers (DONE hash-latch + stall + watchdog). Project-agnostic. |
-| `PORTING.md` | `skills/claude-controlled-build-run/PORTING.md` | — | reference | Exact deltas for SKILL.md + cbr.sh + hooks. |
-| everything else under `skill/` (`SETUP.md`, `templates/`) | same paths | VERBATIM | with the skill | Mirrors the live skill — `export.sh` keeps the whole directory in sync. |
+`cbr.sh arm` installs everything in this table; `SETUP-claude-code.md` is the
+procedure around it.
+
+| File | Mode | Installs to | Notes |
+|---|---|---|---|
+| `SKILL.md`, `SETUP.md`, `PORTING.md`, `references/**` | VERBATIM (PORTING.md lists the few re-points) | `<repo>/skills/claude-controlled-build-run/` | Policy + why; `references/core/` is the shared law, never edited in a port. |
+| `scripts/cbr.sh` | TEMPLATE (light, fleet only) | with the skill | Arm/doctor/provision/launch/status/closeout rail. Constants in `PORTING.md`. |
+| `scripts/captain-watch.sh` | VERBATIM | with the skill | Builder watchers. |
+| `templates/claude-settings.json` | TEMPLATE (model pin; `arm --model`) | `<repo>/.claude/settings.json` | The full hooks block. Existing file → `arm` lists the blocks to merge by hand. |
+| `templates/hooks/roborev-gate.sh`, `roborev-session-sweep.sh`, `no-interactive-ask.sh`, `builder-stop-check.sh`, `control-plane-guard.sh` | VERBATIM | `<repo>/.claude/hooks/` | Byte-identical to the upstream live hooks by exporter contract; `doctor` warns when an installed copy drifts. |
+| `templates/hooks/post-compact-reground.sh` | VERBATIM + declared PORTING block | `<repo>/.claude/hooks/` | The lifeline. Edit only the PORTING block (doc lists, skill paths, handoff guard). |
+| `templates/probity.config.ts` | TEMPLATE | `<repo>/probity.config.ts` | Globs for YOUR production tree; `EDIT ME` until filled. |
+| `templates/pre-commit-config.yaml` | TEMPLATE | `<repo>/.pre-commit-config.yaml` | Real typecheck/test commands; keep the gate hooks verbatim. |
+| `templates/roborev.toml` | TEMPLATE | `<repo>/.roborev.toml` | Cross-family reviewer pin + your review guidelines. |
+| `templates/record-ownership.json` | TEMPLATE | `<repo>/record-ownership.json` | Which record owns which fact. |
+| `templates/*.skeleton.md`, `probe-prompt.md` | VERBATIM | read by `cbr.sh` | Plan/status/park-file skeletons; the operability probe prompt. |
+| `references/core/scripts/merge-review-gate.sh`, `record-single-source.sh` | VERBATIM | `<repo>/scripts/` | The merge wall and the record gate (the pre-commit entries hardcode `./scripts/`). |
+
+## The Codex leaf — `skill/codex-controlled-build-run/`
+
+`scripts/cbr-codex.sh arm` installs it; its own `SETUP.md` is the procedure.
+The `references/cbr-core/` snapshot is byte-identical to the Claude leaf's
+`references/core/` (`verify/core-mirrors.test.sh`).
 
 ## Sibling skills — `sibling-skills/`
 
-| Skill | Source | Mode | Required? | Notes |
-|---|---|---|---|---|
-| `planning-with-files/` | `~/.claude/skills/planning-with-files/` | VERBATIM | **Required** | The plan (`task_plan.md`). Ships its own hooks; **Stop** hook is install-location-sensitive (see SETUP Step 3 caveat). |
-| `test-driven-development/` | `skills/test-driven-development/` | VERBATIM | **Required** | The TDD discipline Probity enforces; re-injected by the reground hook. |
-| `fusion/` (+ `commands/`) | `~/.claude/skills/fusion/` + `~/.claude/commands/fusion-*.md` | VERBATIM | Optional | `/fusion-gpt5.5` design panel. Needs `codex`/`gemini` CLIs; falls back to two-Opus. |
-| `stage-review/` | `<upstream>/skills/stage-review/` | TEMPLATE | Optional | reference-host-shaped phase-review cadence; not referenced by name in SKILL.md. |
-| `closeout/` | `<upstream>/.claude/skills/closeout/` | TEMPLATE | Optional | reference-host-shaped closeout ritual + facts script. |
+| Skill | Mode | Required? | Installed by |
+|---|---|---|---|
+| `test-driven-development/` | VERBATIM | **Required** (the re-ground hook points at it) | `cbr.sh arm` (`skills/`) |
+| `cyclomatic-complexity/` | VERBATIM | Optional ceiling; installed so the pointer resolves | `cbr.sh arm` (`skills/`) |
+| `planning-with-files/` | VERBATIM | Recommended | `cbr.sh arm` (`.claude/skills/`); Stop hook caveat in SETUP Step 4 |
+| `fusion/` (+ `commands/`) | VERBATIM | Optional | SETUP Step 4 (`cp -R`) |
+| `stage-review/` | TEMPLATE | Optional | SETUP Step 4 (`cp -R`) |
+| `closeout/` | TEMPLATE | Optional | SETUP Step 4 (`cp -R`) |
 
-## Control plane — `control-plane/`
-
-| File | Source | Mode | Installs to | Notes |
-|---|---|---|---|---|
-| `hooks/roborev-gate.sh` | `.claude/hooks/roborev-gate.sh` | VERBATIM | `<repo>/.claude/hooks/` | PostToolUse: wake on a RoboRev FAIL. Project-agnostic. |
-| `hooks/roborev-session-sweep.sh` | `.claude/hooks/roborev-session-sweep.sh` | VERBATIM | `<repo>/.claude/hooks/` | SessionStart: list open FAILs + liveness line. Project-agnostic. |
-| `hooks/post-compact-reground.sh` | `.claude/hooks/post-compact-reground.sh` | VERBATIM + declared knob | `<repo>/.claude/hooks/` | The lifeline. Verbatim mirror of the live hook; edit the `PORTING` block at the top (doc list, vocab, handoff guard) per repo — it injects only docs that exist. |
-| `hooks/no-interactive-ask.sh` | `.claude/hooks/no-interactive-ask.sh` | VERBATIM | `<repo>/.claude/hooks/` | Blocks AskUserQuestion in `--bg` builders (they must use ASK-ORCH.md). Project-agnostic. |
-| `skill/claude-controlled-build-run/references/core/scripts/merge-review-gate.sh` | `scripts/merge-review-gate.sh` | VERBATIM | `<repo>/scripts/` | The merge-boundary review wall (per-commit reviews advisory). **Must** be at repo-root `scripts/` (the pre-commit entry hardcodes `./scripts/...`). Project-agnostic. |
-| `settings.hooks.json` | *extracted from* `.claude/settings.json` | TEMPLATE (merge) | merge into `<repo>/.claude/settings.json` | The `hooks` block (Probity + RoboRev gate + sweep + reground). **Merge, never overwrite.** Set `"model"` separately. |
-| `templates/probity.config.ts.template` | *from* `probity.config.ts` | TEMPLATE | `<repo>/probity.config.ts` | The single most repo-specific file (globs + bans). |
-| `templates/pre-commit-config.yaml.template` | *from* `.pre-commit-config.yaml` | TEMPLATE | `<repo>/.pre-commit-config.yaml` | Replace format/lint/type/test (reviews advisory per commit). |
-| `templates/roborev.toml.template` | *from* `.roborev.toml` | TEMPLATE | `<repo>/.roborev.toml` | Dial keys verbatim; rewrite `review_guidelines`. |
+Origins and licenses: `THIRD-PARTY.md` (public repo) and the `LICENSE` files
+beside each vendored skill.
 
 ## Worked references — `examples/` (read-only, do not install)
 
-`reference-probity.config.ts`, `reference-post-compact-reground.sh` — the real,
-complete reference-host files (the settings example was deleted when it drifted from
-the guarded template — skill/claude-controlled-build-run/templates/claude-settings.json is the source). Use them as the gold standard when filling in the templates.
+`reference-probity.config.ts`, `reference-post-compact-reground.sh` — the
+reference host's real files, as the gold standard when filling the templates.
+`wayfinder-composition.md` — composing CBR with an external planner.
 
-## Verify — `verify/smoke.sh`
+## Verify — `verify/`
 
-Static arming check; run from the target repo root after SETUP. New (kit-authored).
+The package's own behavioral suite (`*.test.sh`), also the executable
+acceptance source for a port. `cbr.sh doctor` is the static arming check of
+a target repo; there is no separate smoke script.
 
-## External tools (installed per machine, not files in the kit)
+## External tools (installed per machine, not files in the package)
 
 | Tool | Role | Install |
 |---|---|---|
-| `claude` (Claude Code CLI) | runs everything; `claude --bg` dispatches builders; `claude agents` is the liveness registry | Anthropic; needs a build with `--bg` + `claude agents` (reference: 2.1.186) |
-| `roborev` | per-commit review engine + daemon + the gate/sweep/clean-gate | `brew install roborev`, then `roborev init --agent claude-code`. **Sends PostHog telemetry by default — see SETUP "Tool notes" to disable.** |
-| `@nizos/probity` | the TDD/naming guard | local `node_modules/.bin/probity` when installed, else fetched by `npx --yes @nizos/probity@1.8.1` (needs node/npm/npx) |
-| `jq` | hooks emit JSON through it | `brew install jq` — **required** (hooks fail open without it) |
-| `git`, `python3` | worktrees/hooks; gate scripts' inline logic | system |
-| `pre-commit` | runs `.pre-commit-config.yaml` | `pipx install pre-commit` or via `uv run` |
-| `uv` | Python env + venv the uv-based hooks need | `brew install uv` — only if the repo is Python/uv |
-| `gitleaks` | staged-secret scan (optional pre-commit hook) | `brew install gitleaks` |
-| `codex` / `gemini` | richer `/fusion` panels | optional; fusion falls back to two-Opus without them |
+| `claude` (Claude Code CLI) | runs everything; `claude --bg` dispatches builders | Anthropic; fleet dispatch needs a build with `--bg` + `claude agents` |
+| `roborev` | per-commit review engine + daemon; the merge wall queries it | `brew install roborev`, then `roborev init`. **Sends PostHog telemetry by default — see SETUP "Tool notes".** |
+| `@nizos/probity` | the TDD judge | local `node_modules/.bin/probity` when installed, else `npx --yes @nizos/probity@1.10.0` (pin both together) |
+| `jq` | hooks emit JSON through it | **required** (surfacing hooks fail open without it) |
+| `python3` | gate scripts' inline logic; the control-plane guard (fails closed without it) | system |
+| `git`, `pre-commit` | worktrees/hooks; the commit-stage gates | system; `pipx install pre-commit` |
+| `gitleaks` | staged-secret scan (template wires it) | `brew install gitleaks` or delete the hook |
+| `codex` / `gemini` | richer `/fusion` panels | optional |
 
 ## Auth / secrets (HUMAN — never copied)
 
 | Item | Where | Note |
 |---|---|---|
-| Claude OAuth login | macOS keychain / `~/.claude.json` | `/login` per machine; one expired token 401s claude + RoboRev + Probity together |
+| Claude OAuth login | `~/.claude.json` / keychain | `/login` per machine; one expired token breaks everything it powers at once (`doctor`'s agent round-trip catches it) |
 | Repo trust | `~/.claude.json` `projects[<path>].hasTrustDialogAccepted` | accept interactively once per repo per machine, BEFORE any `--bg` dispatch |
-| `~/.roborev/` (DB, daemon, config) | `~/.roborev/` | per-machine; let `roborev init` create fresh — don't copy |
-
-> **Not a dependency (ruled out):** the `roborev-*` slash-command skills
-> (`roborev-review`, `roborev-fix`, etc.) — CBR drives RoboRev via the **CLI + hooks
-> directly**, not via those skills, so they are excluded from the kit (install
-> separately if you want them as operator convenience). Likewise MiniMax / runtime
-> LLM API keys are the *game's* concern, not the control plane's.
+| `~/.roborev/` | per-machine | let `roborev init` create it fresh |

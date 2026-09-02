@@ -1,13 +1,13 @@
 # SETUP — what a CBR-armed repo has, and why
 
-Plain words. A repo is "armed" for controlled build runs when six pieces are
-in place. `scripts/cbr.sh arm <repo>` installs all six and then proves they
+Plain words. A repo is "armed" for controlled build runs when seven pieces are
+in place. `scripts/cbr.sh arm <repo>` installs all seven and then proves they
 bite; `scripts/cbr.sh doctor` health-checks them any time after (run it before
 every overnight build — it is cheap). Arming is a CBR-DISCIPLINE concern only:
 the recorder/cockpit observability side stays ZERO-TOUCH — never add a setup
 requirement there just to make watching easier.
 
-## The six pieces
+## The seven pieces
 
 1. **The skill folder** (`skills/claude-controlled-build-run/`). The playbook
    itself: SKILL.md is the provider ROUTER; the process law lives in
@@ -71,9 +71,24 @@ requirement there just to make watching easier.
    the host enforces at commit time rather than by asking a reviewer to
    notice.
 
+7. **The control-plane guard.** Everything above is a file in the worktree,
+   and a builder runs with permissions skipped, so without this piece the
+   whole battery is one shell call from `exit 0`. A PreToolUse hook
+   (`.claude/hooks/control-plane-guard.sh`) denies an agent's edits to the
+   session hooks and their wiring, `.git/`, and the gate scripts, and the
+   git bypass idioms (`--no-verify`, `core.hooksPath`, `merge.ff`) — the
+   gate configs stay editable, since setup fills them after arm and every
+   change to them lands in the reviewed diff. The
+   operator unlocks a maintenance session with `CBR_CONTROL_PLANE_UNLOCK=1`
+   in the launching environment. It is a bar against the casual disarm, not
+   a vault (spec §9): the honest claim is "rules the agent cannot forget."
+   Arm also sets `merge.ff=false` — a fast-forward merge fires no commit
+   hook, so without it a fresh branch merged into an unmoved integration
+   branch skips the review wall entirely.
+
 ## Guarded ≠ operable
 
-Wiring all six pieces proves nothing until a gate actually BLOCKS something.
+Wiring all seven pieces proves nothing until a gate actually BLOCKS something.
 `cbr.sh arm` therefore ends by dispatching the operability probe
 (`templates/probe-prompt.md`, a tiny `claude --bg` session): it attempts an
 untested production write and must see it DENIED (prove-NO), then a harmless

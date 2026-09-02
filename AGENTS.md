@@ -14,8 +14,9 @@ Route by intent — read only what the task needs:
   don't duplicate its law.
 - **Port to a new harness** → `skill/claude-controlled-build-run/PORTING.md`
   or `skill/codex-controlled-build-run/references/porting.md`.
-- **Verify anything** → `verify/smoke.sh` (static), then the full suite:
-  `for t in verify/*.test.sh; do bash "$t" || exit 1; done`.
+- **Verify anything** → the full suite:
+  `for t in verify/*.test.sh; do bash "$t" || exit 1; done`
+  (a target repo's arming is checked by the leaf's `cbr.sh doctor`, not here).
 
 Invariants (checked by CI, cheaper to honor than to discover):
 

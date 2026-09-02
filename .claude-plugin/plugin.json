@@ -1,6 +1,6 @@
 {
   "name": "controlled-build-run",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "CBR: a harness-agnostic control plane for long-running coding agents. Durable plans, deterministic gates, independent review, compaction recovery.",
   "author": {
     "name": "Phillip Moran",

@@ -24,7 +24,13 @@ command -v cbr_tool_staleness_report >/dev/null 2>&1 \
   || fail "cbr_tool_staleness_report not defined in strand-lib"
 
 sys_path="/usr/bin:/bin"
-mkdir -p "$tmp/bin" "$tmp/empty"
+mkdir -p "$tmp/bin" "$tmp/empty" "$tmp/sysmin"
+# The "tools absent" cases need a PATH with NO real roborev/npm on it, or a
+# host that keeps npm in /usr/bin (most Linux distros) reaches the registry and
+# the probe speaks. sysmin carries only the coreutils the probe itself uses.
+for c in sed head awk tr grep cat; do
+  w="$(command -v "$c" 2>/dev/null)" && ln -sf "$w" "$tmp/sysmin/$c"
+done
 
 # --- stale tools: both lines surface, exit 0 ---
 cat > "$tmp/bin/roborev" <<'EOF'
@@ -105,12 +111,12 @@ printf '%s\n' "$out" | grep -q "roborev.*1\.2\.3\.4\.1.*1\.2\.3\.4\.2" \
   || fail "fifth-component difference not detected: $out"
 
 # --- tools absent (or offline): silence, exit 0 — fail open ---
-out="$(PATH="$tmp/empty:$sys_path" cbr_tool_staleness_report "1.9.0")" \
+out="$(PATH="$tmp/empty:$tmp/sysmin" cbr_tool_staleness_report "1.9.0")" \
   || fail "probe failed closed with tools absent"
 [ -z "$out" ] || fail "probe spoke with tools absent: $out"
 
 # --- no pin known: probity check skipped silently, roborev still probes ---
-out="$(PATH="$tmp/empty:$sys_path" cbr_tool_staleness_report "")" \
+out="$(PATH="$tmp/empty:$tmp/sysmin" cbr_tool_staleness_report "")" \
   || fail "probe failed closed with empty pin"
 [ -z "$out" ] || fail "probe spoke with empty pin and no tools: $out"
 

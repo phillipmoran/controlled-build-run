@@ -4,6 +4,9 @@
 # on pass, infra hiccups, non-commits, and already-gated commits. Fails open.
 # The wait is bounded by this hook's `timeout` field in settings.json — no
 # reliance on an external `timeout` binary, which macOS does not ship.
+# The rewakeMessage speaks the ADVISORY per-commit cadence, and may: this
+# hook waits only on HEAD's own per-commit job, so a --branch review (whose
+# FAIL is the PR boundary itself — actionable now) can never fire it.
 set -uo pipefail
 
 payload="$(cat)"
@@ -20,17 +23,20 @@ head_sha="$(git rev-parse HEAD 2>/dev/null)" || exit 0
 state="$git_dir/roborev-gate-last-sha"
 [ "$(cat "$state" 2>/dev/null || true)" = "$head_sha" ] && exit 0
 
-# Block until this commit's review completes. 0=PASS; nonzero=FAIL/no-job/error.
-# State is recorded only AFTER the wait returns, so a timeout-killed run leaves
-# no footprint and a later invocation can still surface the late finding.
+# Block until this commit's review completes. 0=PASS, 1=FAIL — and ALSO 0 when
+# no job exists for the sha (upstream-issues.md §2), which this ADVISORY hook
+# reads as "nothing to surface"; the merge-path gate, not this hook, is what
+# notices a missing review. State is recorded only AFTER the wait returns, so
+# a timeout-killed run leaves no footprint and a later invocation can still
+# surface the late finding.
 if roborev wait -q "$head_sha" >/dev/null 2>&1; then
   printf '%s' "$head_sha" > "$state"
   exit 0
 fi
 
-# Nonzero verdict means FAIL or no-review — a clean PASS already exited 0 above
-# via `roborev wait` (verified: wait returns 0 for PASS, 1 for FAIL). Surface
-# ONLY a real FAIL. Scope the infra checks to the FIRST line: a genuine
+# Nonzero here means FAIL (a clean PASS, and a sha with no job, already exited
+# 0 above). Surface ONLY a real FAIL; the no-review branch below stays as a
+# guard for a roborev build whose `wait -q` starts failing on a missing job. Scope the infra checks to the FIRST line: a genuine
 # "Error:" / "no review found" notice occupies line 1, whereas a real FAIL's
 # finding prose may itself contain those words and must NOT be swallowed. We do
 # NOT grep the body for "no issues found" — a PASS never reaches here, so that

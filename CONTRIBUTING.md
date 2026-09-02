@@ -3,8 +3,8 @@
 This repository is the public home of the Controlled-Build-Run (CBR) control
 plane. What is canonical where:
 
-- **Package content** (`skill/`, `sibling-skills/`, `control-plane/`,
-  `verify/`, `SETUP.md`, `MANIFEST.md`) is exported from an upstream source
+- **Package content** (`skill/`, `sibling-skills/`, `verify/`,
+  `SETUP.md`, `SETUP-claude-code.md`, `MANIFEST.md`) is exported from an upstream source
   repo. PRs against these files are welcome as bug reports with a proposed
   fix — they get applied upstream and flow back in the next export, so your
   change may land slightly reshaped.
@@ -44,4 +44,7 @@ Rules that keep the package coherent:
   in `MANIFEST.ignore` and never stale it. CI verifies the manifest at HEAD
   regardless.
 - **Run the suite.** `for t in verify/*.test.sh; do bash "$t" || exit 1; done`
-  before opening a PR (one test takes ~2 minutes; that's normal).
+  before opening a PR (one test takes ~2 minutes; that's normal). The suite
+  needs `git`, `bash`, `jq`, `lsof`, and `python3` on PATH; it is hermetic
+  otherwise (scratch repos only, no `roborev`, `pre-commit`, or network
+  required).

@@ -23,7 +23,7 @@ Reach for CBR when the work is long enough to go wrong on its own:
 
 - It'll run past a context compaction (about 45 minutes or more).
 - You want to walk away and trust what's there when you get back.
-- You need rules the agent can't forget or talk itself out of.
+- You need rules the agent can't forget, and can't quietly switch off.
 - You use more than one harness (Claude Code and Codex) and want one
   process across both.
 
@@ -119,24 +119,52 @@ of exactly what one has to supply.
 5. Deterministic checks run on every commit: format, lint, types, tests, and
    optionally a complexity ceiling so the tree doesn't fill up with slop.
 6. An AI reviewer reads each commit and sends advisory findings to your
-   agent. Advisory means advisory: nothing holds up the next commit.
+   agent. Advisory means advisory: nothing holds up the next commit. If the
+   reviewer daemon is down, per-commit reviews simply don't happen, and the
+   merge gate below refuses to merge until it is back: an unverifiable wall
+   is no wall.
 7. At the PR boundary the homework comes due. A reviewer reads the full
    branch diff, and every finding must be fixed or declined with a written
-   reason. Open commit reviews get closed here too. Fix rounds are capped, so
-   a reviewer that invents problems can't hold the branch hostage; past the
-   cap, a human ruling gets recorded.
+   reason. Open commit reviews get closed here too. Fix rounds are capped at
+   three, so a reviewer that invents problems can't hold the branch hostage;
+   past the cap, a human ruling gets recorded. The count comes from the
+   round markers the agent writes into its commit subjects, a convention it
+   is bound to rather than an independent measurement; the gate enforces
+   whatever count is on file.
 8. A merge gate refuses a bad merge: no merge while the branch has open
    blocking findings, no completed review at its tip, or an over-cap round
-   count with no ruling on file.
+   count with no ruling on file. Setup also sets `merge.ff=false`, because a
+   fast-forward merge creates no commit and would fire no hook at all.
 9. When the agent's context gets compacted (the most dangerous moment of a
    long run), a hook re-injects the plan, the house rules, and pointers to
    the process law. The build survives its own memory loss.
-10. For bigger work there is a built-in orchestration layer: you talk to one
+10. The enforcement layer guards itself. A hook denies the agent's own edits
+    to the session hooks and their wiring, `.git/`, and the gate scripts,
+    and the git bypass idioms (`--no-verify`, `core.hooksPath`, `merge.ff`).
+    This is a bar against the casual disarm, not a vault: an agent running
+    with permissions skipped has a shell, and every control here lives in
+    the worktree. The operator unlocks a maintenance session with an
+    environment variable; the gate configs stay editable so setup can fill
+    them and every change lands in the reviewed diff.
+11. For bigger work there is a built-in orchestration layer: you talk to one
     orchestrator, and it parallelizes the work across a fleet of builder
     agents, each in its own strand, watched from outside.
 
-One command, `doctor`, verifies all of it is armed in your repo. Reading docs
-arms nothing; the check proves it.
+### What fires when
+
+| Check | Fires | Blocks? |
+|---|---|---|
+| Probity (TDD + naming) | before every write/edit | yes: the write |
+| control-plane guard | before a write or shell command touching the enforcement layer | yes: the tool call |
+| ask guard | before an interactive question on a headless builder | yes: the tool call |
+| pre-commit (format, lint, types, tests, optional complexity ceiling) | on every commit | yes: the commit |
+| RoboRev | after each commit | no, advisory |
+| merge review gate | on the merge commit | yes: the merge |
+| stop gate | when a builder tries to go quiet with the plan open | yes: the stop |
+| session sweep + post-compaction re-ground | session start, after compaction | no, surfaces |
+
+One command, `doctor`, verifies all of it is armed in your repo, including
+that the guard is wired. Reading docs arms nothing; the check proves it.
 
 ## Getting started
 
@@ -157,8 +185,15 @@ Then open the target repo and type `/cbr`. It will notice the repo is not
 armed yet and offer `/cbr-setup`, which vendors this whole package into the
 repo (both adapters included) and runs the Claude Code installer.
 
-Manual: copy this whole folder into the repo and point Claude at
-[`SETUP-claude-code.md`](SETUP-claude-code.md).
+Manual: copy this whole folder into the repo, run the one installer,
+
+```
+bash controlled-build-run/skill/claude-controlled-build-run/scripts/cbr.sh arm "$(pwd)" --no-probe
+```
+
+then follow [`SETUP-claude-code.md`](SETUP-claude-code.md) for the config
+fill and the proof. The guard is live the moment `arm` writes the settings
+file, so pin a model with `arm --model <id>` rather than by hand afterwards.
 
 ### Codex
 
@@ -188,13 +223,11 @@ controlled-build-run/
 ├─ skill/claude-controlled-build-run/   ← Claude Code adapter (SKILL.md, references/, scripts/cbr.sh)
 ├─ skill/codex-controlled-build-run/    ← Codex adapter (SETUP.md, skill, companion script)
 ├─ sibling-skills/      ← planning-with-files + test-driven-development +
-│                         cyclomatic-complexity (required);
+│                         cyclomatic-complexity (the installer places these);
 │                         fusion, stage-review, closeout (optional)
-├─ control-plane/       ← the arming: hook scripts (verbatim), the settings hooks
-│                         block to merge, and config templates to fill in
 ├─ examples/            ← real configs from the reference host, plus a worked
 │                         example of composing CBR with an external planner
-├─ verify/              ← CBR's own regression suite + smoke.sh static arming check
+├─ verify/              ← CBR's own regression suite (`*.test.sh`)
 │
 ├─ skills/              ← Claude Code plugin layer (/cbr commands); repo-native,
 └─ .claude-plugin/        not vendored into target repos

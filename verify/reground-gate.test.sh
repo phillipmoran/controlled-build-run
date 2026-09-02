@@ -8,7 +8,8 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-hook_src="$here/../control-plane/hooks/post-compact-reground.sh"
+hook_src="$here/../../skills/claude-controlled-build-run/templates/hooks/post-compact-reground.sh"
+[ -f "$hook_src" ] || hook_src="$here/../skill/claude-controlled-build-run/templates/hooks/post-compact-reground.sh"
 [ -f "$hook_src" ] || { echo "reground-gate: hook not found at $hook_src" >&2; exit 2; }
 
 # runs inside pre-commit hooks whose GIT_* env would poison the fixture repo

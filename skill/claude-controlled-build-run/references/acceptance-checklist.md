@@ -14,9 +14,12 @@ executable acceptance source.)
   `package.json` and the hook line — bump together); the SessionStart session
   sweep; the `compact`-matched re-ground (a SessionStart hook, never
   `PostCompact` — log-only, cannot inject); the RoboRev PostToolUse gate; and
-  the `no-interactive-ask` guard on `AskUserQuestion`. Git post-commit and
-  post-rewrite hooks resolve through `git rev-parse --git-path` (a worktree's
-  `.git` is a file). Arming merges into existing settings, never clobbers.
+  the `no-interactive-ask` guard on `AskUserQuestion`; and the control-plane
+  guard on `Write|Edit|MultiEdit|NotebookEdit|Bash` (spec §9). Git post-commit
+  and post-rewrite hooks resolve through `git rev-parse --git-path` (a
+  worktree's `.git` is a file). Arming merges into existing settings, never
+  clobbers, and sets `merge.ff=false` so no merge can fast-forward past the
+  wall.
 - **B4** — a fresh strand proves BOTH guard and ability after pre-warming the
   npx cache (a cold fetch can exceed the hook timeout and fail open → false
   prove-NO): an untested guarded write is BLOCKED (prove-NO); one real
@@ -25,7 +28,9 @@ executable acceptance source.)
 - **C3** — the compaction triple in `.claude/settings.json` (root AND the
   stream template): `autoCompactEnabled: true`, `autoCompactWindow: 350000`,
   `autoCompactThreshold: 0.85`; on a smaller-context model the window clamps
-  to the model's own limit. `cbr.sh doctor` checks all three.
+  to the model's own limit. `cbr.sh doctor` FAILs when the triple is missing
+  or disabled and WARNs when the numbers differ from these reference values
+  (the law is the dial's direction, not the numbers).
 - **F4a** — builders launch as **`claude --bg`** session roots (on-plan),
   never `claude -p` / the Agent SDK (off-plan billing) and never tmux
   (impossible from a Claude session — the Bash tool has no pty).

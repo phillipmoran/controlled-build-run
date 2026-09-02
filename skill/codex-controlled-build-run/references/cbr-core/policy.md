@@ -20,6 +20,7 @@ Two jobs, in order: **(1) verify/wire the control plane**, then **(2) run the lo
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
 | **Probity**                                    | before every write/edit                                                                                  | enforces TDD (no prod code before a watched-fail test) + naming rules                                                                                                                        | yes — blocks the write                                                    |
 | **no-interactive-ask**                         | before an interactive question on a headless builder                                                     | denies it + redirects to the file-based ask channel (a headless builder freezes on an interactive prompt)                                                                                    | yes — blocks the tool                                                     |
+| **control-plane guard**                        | before a write/edit or shell command that touches the enforcement layer                                  | denies edits to the session hooks and their wiring, the git hooks/config, and the gate scripts, and the git bypass idioms (`--no-verify`, `core.hooksPath`, `merge.ff`) unless the operator unlocked the session | yes — blocks the tool (a bar against the casual disarm, not a vault)      |
 | **pre-commit** (format + lint + types + tests) | on every commit                                                                                          | deterministic facts: format, lint, types, tests                                                                                                                                              | yes — blocks the commit                                                   |
 | **complexity ceiling** (optional)              | on every commit, in projects that wire one (in pre-commit)                                               | deterministic fact: a function branches past the bar the host lint layer sets                                                                                                                | yes, where wired — blocks the commit, with a deterministic exemption exit |
 | **RoboRev**                                    | after each commit                                                                                        | LLM review of the diff; surfaces findings (advisory until the merge boundary)                                                                                                                | no — advises only                                                         |
@@ -175,7 +176,7 @@ planning skill always uses).
 Most control-plane pieces already exist in an established repo. For each piece:
 check if it's present first. If it is, confirm it matches the spec and move
 on — do not blindly overwrite a working hook. Only install what is missing or
-wrong. The six pieces, generically:
+wrong. The seven pieces, generically:
 
 1. **The planning skill** is available (the plan lives in `task_plan.md`).
 2. **Probity** — its config at the repo root + the pre-write hook that runs it.
@@ -186,7 +187,11 @@ wrong. The six pieces, generically:
 5. **Pre-commit checks** — the deterministic gate config present (format
    check alongside lint/types/tests, **and the merge review gate**), and the
    git hooks actually installed — BOTH types: pre-commit AND pre-merge-commit
-   (an auto-committing merge fires only the latter; git has no fallback).
+   (an auto-committing merge fires only the latter; git has no fallback) —
+   **and `merge.ff=false` set in the repo's git config**: a fast-forward
+   merge creates no commit, so it fires no commit hook at all, and a fresh
+   branch merged into an unmoved integration branch fast-forwards by
+   default. The wall stands only when every merge is a merge commit.
    This is the piece most often present-but-not-armed — check the installed
    hook files themselves. The git hooks are generic and shared across
    worktrees; what makes the merge wall _fire_ is the branch carrying the
@@ -196,6 +201,17 @@ wrong. The six pieces, generically:
    gate-inheritance law in `modes/`).
 6. **Post-compaction re-ground** — wired into a hook event that can actually
    inject context (see above). **This is the lifeline of a long run.**
+7. **The control-plane guard** — the pre-write/pre-shell hook that denies an
+   agent's edits to the mechanisms above (the session hooks and their wiring,
+   the git hooks and config, the gate scripts). Everything here is a file in
+   the worktree, and a builder runs with permissions skipped, so without this
+   piece the whole battery is one shell call from `exit 0`. It is a bar
+   against the casual disarm, not a vault: an agent that decides to tamper
+   can still route around a text check, so the honest claim for the control
+   plane is "rules the agent cannot forget," with tampering made visible and
+   expensive rather than impossible. The gate _configs_ are deliberately not
+   guarded: setup fills them in after arming, and they are tracked files
+   whose every change lands in the diff the reviewer and the operator read.
 
 ## The model dial — the principle
 

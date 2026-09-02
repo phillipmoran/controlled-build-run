@@ -19,3 +19,10 @@ claims what exists.
 - **Update path hardening** — today updating a vendored package is a
   re-vendor + re-run of setup (see UPDATING.md); a proper migration flow
   that diffs operator-adapted configs against new templates is wanted.
+- **Codex guard parity** — the control-plane guard ships on the Claude
+  Code leaf only, because Codex has no PreToolUse-shaped hook to hang it
+  on. Find the nearest equivalent, or document the gap per harness.
+- **Guard hardening** — the guard is a bar, not a vault: it pattern-matches
+  the direct disarm idioms. Known gaps worth closing as they are found
+  (indirection through scripts the agent writes, editing the gate configs
+  to no-ops, which stay unguarded by design). Each closed gap gets a fixture.

@@ -406,9 +406,9 @@ ensure_push_firewall() {  # $1 = pre-push hook file path
   return 2
 }
 
-# is the FULL hook wiring live in this settings.json? The armed control plane needs all four blocks —
-# Probity (PreToolUse), the RoboRev gate (PostToolUse), and the session sweep + compaction
-# re-ground (SessionStart). Hook SCRIPTS on disk prove nothing if settings never invokes them,
+# is the FULL hook wiring live in this settings.json? The armed control plane needs every block —
+# Probity + the ask guard + the control-plane guard (PreToolUse), the RoboRev gate (PostToolUse),
+# the session sweep + compaction re-ground (SessionStart), and the stop gate (Stop). Hook SCRIPTS on disk prove nothing if settings never invokes them,
 # and a needle in an inert entry proves nothing either — so this parses the hook OBJECTS: the
 # command must sit in a type:"command" entry under the right event, with the matcher the control plane
 # needs (Probity must match Write+Edit, the RoboRev gate must match Bash, the re-ground must
@@ -503,6 +503,7 @@ need = [
     ("SessionStart","script",  ".claude/hooks/post-compact-reground.sh",["compact"],       "compaction re-ground (SessionStart, matcher 'compact')"),
     ("PreToolUse",  "script",  ".claude/hooks/no-interactive-ask.sh",   ["AskUserQuestion"], "AskUserQuestion guard (PreToolUse, matcher 'AskUserQuestion' — a --bg builder must not freeze on an interactive prompt)"),
     ("Stop",        "script",  ".claude/hooks/builder-stop-check.sh",   "NONE",            "stop-before-DONE gate (Stop, unscoped — a stream builder may not go quiet with the plan open and no terminal marker)"),
+    ("PreToolUse",  "script",  ".claude/hooks/control-plane-guard.sh",  ["Write", "Edit", "Bash"], "control-plane guard (PreToolUse, matcher must cover Write+Edit+Bash — without it every gate is one shell call from exit 0)"),
 ]
 missing = [label for event, kind, needle, matcher, label in need if not live(event, kind, needle, matcher)]
 if not isinstance(cfg.get("model"), str) or not cfg["model"].strip():
@@ -1273,15 +1274,16 @@ PY
 #   Skeletons ship FAIL-CLOSED: the EDIT-ME pre-commit hooks exit 1 until real commands are wired.
 # ---------------------------------------------------------------------------
 cmd_arm() {
-  local target="${1:-}" no_probe=0
-  shift 1 2>/dev/null || die "usage: cbr.sh arm <repo-path> [--no-probe]"
+  local target="${1:-}" no_probe=0 model=""
+  shift 1 2>/dev/null || die "usage: cbr.sh arm <repo-path> [--no-probe] [--model <id>]"
   while [ $# -gt 0 ]; do
     case "$1" in
       --no-probe) no_probe=1; shift ;;
+      --model) model="${2:-}"; [ -n "$model" ] || die "arm: --model needs a model id"; shift 2 ;;
       *) die "arm: unknown arg '$1'" ;;
     esac
   done
-  [ -n "$target" ] && [ -d "$target" ] || die "usage: cbr.sh arm <repo-path> [--no-probe]"
+  [ -n "$target" ] && [ -d "$target" ] || die "usage: cbr.sh arm <repo-path> [--no-probe] [--model <id>]"
   target="$(cd "$target" && pwd -P)"
   git -C "$target" rev-parse --show-toplevel >/dev/null 2>&1 || die "arm: '$target' is not a git repo (git init it first)"
   [ "$(git -C "$target" rev-parse --show-toplevel)" = "$target" ] || die "arm: point at the repo ROOT, not a subdirectory"
@@ -1331,12 +1333,50 @@ cmd_arm() {
     esac
   else
     put claude-settings.json .claude/settings.json
+    # The model pin is set HERE, on the fresh file, because the control-plane
+    # guard wired by that same file denies later agent edits to it. --model
+    # is the sanctioned way to pin a model the template's default cannot be.
+    if [ -n "$model" ] && [ -f "$target/.claude/settings.json" ]; then
+      if python3 - "$target/.claude/settings.json" "$model" <<'PY'
+import json, sys
+p, m = sys.argv[1], sys.argv[2]
+cfg = json.load(open(p)); cfg["model"] = m
+with open(p, "w") as fh:
+    json.dump(cfg, fh, indent=2); fh.write("\n")
+PY
+      then ok "pinned model '$model' in .claude/settings.json"; else bad "could not pin --model in .claude/settings.json"; fails=$((fails+1)); fi
+    fi
   fi
   put hooks/roborev-gate.sh .claude/hooks/roborev-gate.sh exec
   put hooks/roborev-session-sweep.sh .claude/hooks/roborev-session-sweep.sh exec
   put hooks/post-compact-reground.sh .claude/hooks/post-compact-reground.sh exec
   put hooks/no-interactive-ask.sh .claude/hooks/no-interactive-ask.sh exec
   put hooks/builder-stop-check.sh .claude/hooks/builder-stop-check.sh exec
+  put hooks/control-plane-guard.sh .claude/hooks/control-plane-guard.sh exec
+
+  # 2b. the sibling skills the re-ground hook points at. Arm used to leave
+  # these to a separate installer doc, so the arm path shipped a re-ground
+  # whose TDD pointer silently dropped out of the payload. Sources resolve in
+  # the canonical layout (skills/<name> beside this leaf) or the package
+  # layout (sibling-skills/<name> two levels up); a missing source is loud.
+  put_sibling() {  # put_sibling <name> <dest-rel> <required|optional>
+    local name="$1" dst="$target/$2" src=""
+    for src in "$SKILL_DIR/../$name" "$SKILL_DIR/../../sibling-skills/$name" "$SKILL_DIR/../../.claude/skills/$name"; do
+      [ -d "$src" ] && break
+      src=""
+    done
+    if [ -e "$dst" ]; then note "exists, left untouched: $2"; return 0; fi
+    if [ -z "$src" ]; then
+      if [ "$3" = required ]; then bad "sibling skill '$name' not found beside this skill — the re-ground hook points at $2"; fails=$((fails+1))
+      else note "optional sibling skill '$name' not found beside this skill — skipped"; fi
+      return 0
+    fi
+    mkdir -p "$(dirname "$dst")"
+    if cp -R "$src" "$dst"; then ok "installed $2 (sibling skill)"; else bad "failed to install $2"; fails=$((fails+1)); fi
+  }
+  put_sibling test-driven-development skills/test-driven-development required
+  put_sibling cyclomatic-complexity   skills/cyclomatic-complexity   optional
+  put_sibling planning-with-files     .claude/skills/planning-with-files optional
 
   # 3. RoboRev — config only. Per-commit reviews are advisory (2026-08-31
   # cadence move): the blocking review check lives on the merge path.
@@ -1390,6 +1430,18 @@ cmd_arm() {
     fi
   else
     bad "pre-commit not on PATH — install it, then run 'pre-commit install' in $target"; fails=$((fails+1))
+  fi
+
+  # 4b. A fast-forward merge creates no commit and fires no commit hook — a
+  # fresh branch merged into an unmoved integration branch fast-forwards by
+  # default and skips the review wall entirely. Every merge must be a merge
+  # commit for the wall to stand.
+  if [ "$(git -C "$target" config --get merge.ff 2>/dev/null)" = "false" ]; then
+    note "merge.ff already false (every merge is a merge commit)"
+  elif git -C "$target" config merge.ff false; then
+    ok "set merge.ff=false (a fast-forward merge would bypass the merge review wall)"
+  else
+    bad "could not set merge.ff=false — fast-forward merges bypass the review wall"; fails=$((fails+1))
   fi
 
   # 5. re-injection docs — only if the repo has NO agent entry doc at all (never clobber)
@@ -1618,24 +1670,49 @@ cmd_doctor() {
       *) bad "settings.json unreadable/invalid JSON"; fails=$((fails+1)) ;;
     esac
     # Compaction triple (operator-set; reference-host prior art): compact late, at 85% of 350k.
+    # The LAW is the dial's direction (policy.md "Compact late"); the numbers are
+    # this leaf's reference values. Missing/disabled is a FAIL (no late-compaction
+    # at all); a deliberately different pair of numbers is a WARN, not a red doctor.
     local acw
     acw="$(python3 -c "import json,sys;d=json.load(open(sys.argv[1]));print(d.get('autoCompactEnabled'),d.get('autoCompactWindow'),d.get('autoCompactThreshold'))" "$root/.claude/settings.json" 2>/dev/null)"
-    if [ "$acw" = "True 350000 0.85" ]; then
-      ok "compaction triple set (enabled, window=350000, threshold=0.85 — see SKILL.md 'Compaction window')"
-    else
-      bad "compaction triple missing/wrong (got '${acw:-unset}', want 'True 350000 0.85') — see SKILL.md 'Compaction window'"
-      fails=$((fails+1))
-    fi
+    case "$acw" in
+      "True 350000 0.85") ok "compaction triple set (enabled, window=350000, threshold=0.85 — see SKILL.md 'Compaction window')" ;;
+      "True None"*|"True "*" None"|"False"*|"None"*|"")
+        bad "compaction triple missing/disabled (got '${acw:-unset}'; need autoCompactEnabled=true + a window + a threshold) — see SKILL.md 'Compaction window'"
+        fails=$((fails+1)) ;;
+      *) warn "compaction triple differs from the reference values (got '$acw', reference 'True 350000 0.85') — fine if chosen deliberately; the law is only 'compact late, with headroom'" ;;
+    esac
   else
     bad ".claude/settings.json missing — no hooks fire at all"; fails=$((fails+1))
   fi
   local h
   for h in roborev-gate.sh roborev-session-sweep.sh post-compact-reground.sh no-interactive-ask.sh \
-           builder-stop-check.sh; do
+           builder-stop-check.sh control-plane-guard.sh; do
     [ -x "$root/.claude/hooks/$h" ] \
       && ok "hook present + executable: .claude/hooks/$h" \
       || { bad "hook missing or not executable: .claude/hooks/$h"; fails=$((fails+1)); }
   done
+  # Presence is not identity: a hook body that drifted from its template is
+  # either an operator customization or a disarm (`exit 0` at the top), and a
+  # doctor cannot tell which — so it names the drift and lets a human read it.
+  # The re-ground hook is excluded: its PORTING block is meant to be edited.
+  local tpl_hooks="$root/skills/claude-controlled-build-run/templates/hooks"
+  if [ -d "$tpl_hooks" ]; then
+    for h in roborev-gate.sh roborev-session-sweep.sh no-interactive-ask.sh builder-stop-check.sh control-plane-guard.sh; do
+      if [ -f "$root/.claude/hooks/$h" ] && [ -f "$tpl_hooks/$h" ] && ! cmp -s "$root/.claude/hooks/$h" "$tpl_hooks/$h"; then
+        warn "hook body differs from its template: .claude/hooks/$h vs skills/claude-controlled-build-run/templates/hooks/$h — read the diff; a customization is fine, a disarm is not"
+      fi
+    done
+  fi
+
+  # The re-ground hook points at these; a pointer to a missing file drops out
+  # of the payload silently (the hook is [ -f ]-guarded, correctly), so the
+  # doctor is where the absence has to become visible.
+  [ -f "$root/skills/test-driven-development/SKILL.md" ] \
+    && ok "TDD skill present (skills/test-driven-development/ — the re-ground hook points at it)" \
+    || { bad "skills/test-driven-development/SKILL.md missing — the re-ground hook's TDD pointer silently drops out (run: cbr.sh arm $root)"; fails=$((fails+1)); }
+  [ -f "$root/skills/cyclomatic-complexity/SKILL.md" ] \
+    || warn "skills/cyclomatic-complexity/SKILL.md absent — fine unless this project wires a complexity ceiling (the re-ground pointer is skipped)"
 
   # RoboRev: config, daemon, and the OAuth round-trip (per-commit reviews are
   # advisory since the 2026-08-31 cadence move; the blocking check is on merge)
@@ -1659,6 +1736,22 @@ cmd_doctor() {
   else
     bad "no gate-running pre-merge-commit hook — auto-committing merges bypass the whole battery including the review wall; run 'pre-commit install' (config declares both hook types)"; fails=$((fails+1))
   fi
+  # No commit hook fires on a fast-forward merge (verified empirically
+  # 2026-09-02: pre-commit and pre-merge-commit both set to fail, `git merge`
+  # of a fresh branch fast-forwarded, rc=0, neither hook ran). The wall needs
+  # every merge to be a merge commit.
+  if [ "$(git -C "$root" config --get merge.ff 2>/dev/null)" = "false" ]; then
+    ok "merge.ff=false (every merge is a merge commit, so the merge wall fires)"
+  else
+    bad "merge.ff is not false — a fast-forward merge fires NO commit hook and bypasses the review wall; run: git config merge.ff false (arm does this)"; fails=$((fails+1))
+  fi
+  # Presence is not liveness for the LLM gates either: the skeleton configs
+  # ship with EDIT-ME markers and TS-only globs, so an unedited probity.config.ts
+  # on a Python repo guards nothing while looking installed.
+  [ -f "$root/probity.config.ts" ] && grep -q "EDIT ME" "$root/probity.config.ts" \
+    && { bad "probity.config.ts still carries its EDIT-ME skeleton — set the globs to THIS repo's production tree (an unedited skeleton guards nothing on a non-TS repo)"; fails=$((fails+1)); }
+  [ -f "$root/.roborev.toml" ] && grep -q "EDIT ME" "$root/.roborev.toml" \
+    && { bad ".roborev.toml still carries its EDIT-ME skeleton — write THIS repo's review guidelines"; fails=$((fails+1)); }
   if command -v roborev >/dev/null; then
     if ( cd "$root" && roborev list >/dev/null 2>&1 ); then
       ok "roborev daemon reachable"
@@ -1712,6 +1805,17 @@ cmd_doctor() {
     missing) bad "push firewall missing — an unattended builder could push"; fails=$((fails+1)) ;;
     *) bad "push firewall at $pp does NOT deny every route to main ($fwv) — a push to main may pass; re-run arm to upgrade"; fails=$((fails+1)) ;;
   esac
+
+  # A vendored package carries its own content fingerprint; a mismatch means
+  # the vendored copy was edited in place (or half-updated). WARN-only: the
+  # installed copies above are what actually fire, and those are checked there.
+  if [ -x "$root/controlled-build-run/verify-manifest.sh" ] && [ -f "$root/controlled-build-run/MANIFEST.sha256" ]; then
+    if ( cd "$root/controlled-build-run" && ./verify-manifest.sh >/dev/null 2>&1 ); then
+      ok "vendored package matches its MANIFEST.sha256 (controlled-build-run/)"
+    else
+      warn "vendored package does NOT match its MANIFEST.sha256 — controlled-build-run/ was edited in place or half-updated; see UPDATING.md"
+    fi
+  fi
 
   # re-injection docs
   { [ -e "$root/AGENTS.md" ] || [ -e "$root/CLAUDE.md" ]; } \

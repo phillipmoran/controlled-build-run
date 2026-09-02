@@ -34,9 +34,11 @@ builders (the orchestrator/fleet flow). A solo build never calls it; the control
 ## Edits in the hooks
 
 - `hooks/post-compact-reground.sh` — the declared PORTING block at the top:
-  `PRINCIPLE_DOCS` (reference: `CONSTITUTION.md ENGINEERING.md VISION.md`),
-  `VOCAB_DOC`, `HANDOFF_GUARD`. Point at your repo's short "how we build" docs;
-  the hook injects only docs that exist.
+  `HOUSE_DOCS` (injected whole; reference: `CONSTITUTION.md AGENTS.md`),
+  `PRINCIPLE_POINTERS` (listed as re-read pointers; reference:
+  `ENGINEERING.md VISION.md`), `SKILL_REL`/`TDD_REL`/`COMPLEXITY_REL` (where
+  the skills landed), `HANDOFF_GUARD`. Point at your repo's short "how we
+  build" docs; the hook injects only docs that exist.
 
 ## Edits in the router + references (mostly read-as-is; re-point these specifics)
 
@@ -50,7 +52,7 @@ builders (the orchestrator/fleet flow). A solo build never calls it; the control
 - **Package path** references (`packages/**`): Probity's gated tree. Match
   your source layout (`probity.config.ts` globs + the prose in
   `references/claude.md`).
-- **Binding-doc names**: the reground hook's `PRINCIPLE_DOCS`/`ROUTING_DOC`
+- **Binding-doc names**: the reground hook's `HOUSE_DOCS`/`PRINCIPLE_POINTERS`
   PORTING block, plus mentions in `references/claude.md` and
   `agent-harness-spec.md`. Re-point to your repo's equivalents (or drop where you
   have none).

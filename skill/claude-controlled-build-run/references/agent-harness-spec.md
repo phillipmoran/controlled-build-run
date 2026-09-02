@@ -239,8 +239,9 @@ on its own first; otherwise the next commit blocks on legacy formatting.
   SessionStart/`compact`, not `PostCompact`" below).
 - **What it injects (COMPOSED, role-aware).** The payload is composed from the
   leaf's `references/` tree, never a single pasted file:
-  - the repo's binding docs (the `PRINCIPLE_DOCS` + `ROUTING_DOC` porting
-    knobs; in this repo CONSTITUTION, ENGINEERING, VISION, AGENTS.md), whole;
+  - the repo's binding docs (the `HOUSE_DOCS` porting knob, injected whole —
+    in this repo CONSTITUTION.md and AGENTS.md; `PRINCIPLE_POINTERS` —
+    ENGINEERING.md, VISION.md — ride as re-read pointers, not pasted);
   - the router `SKILL.md`, unconditionally;
   - when a `task_plan.md` exists (a build is in progress): the core law files
     for **exactly the plan's role** — `references/core/`
@@ -415,15 +416,50 @@ push firewall uses, so the orchestrator (`integration/*`) keeps `AskUserQuestion
   PreToolUse entry. `cbr.sh arm` installs it via its `put` list; `provision` refuses
   to arm a worktree whose settings lack the block.
 
+## 9. Control-plane guard (the enforcement layer is not the agent's to edit, BLOCKS)
+
+Every piece above is a file in the worktree or under `.git/`, and a builder runs
+`--dangerously-skip-permissions`, so without this piece the whole battery is one
+Bash call from `exit 0` (`echo 'exit 0' > .claude/hooks/builder-stop-check.sh`
+takes effect on the next stop — hook bodies are read per invocation). The guard
+denies Write/Edit to the session hooks and their wiring (`.claude/hooks/`,
+`.claude/settings.json`), anything under `.git/`, and the gate scripts
+(`scripts/merge-review-gate.sh`, `scripts/record-single-source.sh`); and it
+denies Bash commands that write to those files or carry a git bypass
+(`--no-verify` / `commit -n`, `core.hooksPath`, `merge.ff`). Two deliberate
+exemptions: `post-compact-reground.sh` (a surfacing hook with a PORTING block
+setup edits after arm; its loss costs a re-ground, not a guarantee) and the gate
+configs (`probity.config.ts`, `.pre-commit-config.yaml`, `.roborev.toml`,
+`record-ownership.json` — setup fills them after arm, and they are tracked
+files whose every change lands in the reviewed diff). It is a bar, not a vault
+— the Bash check reads command text — so the honest claim is "rules the agent
+cannot forget," with tampering made visible and expensive, not impossible.
+Claude Code applies settings-file hook changes immediately, so the guard is live
+from the moment arm writes `.claude/settings.json`; pin a non-default model with
+`cbr.sh arm --model <id>` rather than editing the file afterwards.
+
+- **Where:** `.claude/hooks/control-plane-guard.sh` + a PreToolUse entry in
+  `.claude/settings.json` with `matcher: "Write|Edit|MultiEdit|NotebookEdit|Bash"`.
+- **Unlock:** the operator exports `CBR_CONTROL_PLANE_UNLOCK=1` in the environment
+  that launches the harness for a maintenance session (arming, porting, hook
+  work). Setting it inside a Bash command is itself denied.
+- **Verify:** `test -x .claude/hooks/control-plane-guard.sh`; `cbr.sh doctor`
+  lists the script in its executable-hook loop and the block in
+  `missing_hook_wiring`'s `need` list, and WARNs when an installed verbatim hook
+  body no longer matches its template. Behavior: `kit/verify/control-plane-guard.test.sh`.
+- **Install:** `cbr.sh arm` installs the script via its `put` list and the block
+  via the settings template.
+
 ---
 
 ## The `.claude/settings.json` hooks block
 
-All five Claude Code hook scripts live here, across three events — the reground
+All six Claude Code hook scripts live here, across four events — the reground
 shares the `SessionStart` event with the session-sweep (it is a _second_
 `SessionStart` group with `matcher: "compact"`), and is **not** a `PostCompact`
-hook. Two PreToolUse entries fire: Probity (`Bash|Write|Edit`) and the
-`no-interactive-ask` guard (`AskUserQuestion`). Merge these entries (don't drop
+hook. Three PreToolUse entries fire: Probity (`Bash|Write|Edit`), the
+`no-interactive-ask` guard (`AskUserQuestion`), and the control-plane guard
+(`Write|Edit|MultiEdit|NotebookEdit|Bash`). Merge these entries (don't drop
 existing unrelated hooks). `asyncRewake` on the RoboRev gate is what lets a FAIL wake
 the agent; the `timeout` bounds the wait.
 
@@ -441,6 +477,16 @@ the agent; the `timeout` bounds the wait.
           {
             "type": "command",
             "command": "bash .claude/hooks/no-interactive-ask.sh",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/control-plane-guard.sh",
             "timeout": 10
           }
         ]

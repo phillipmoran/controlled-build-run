@@ -20,8 +20,8 @@ Find the Claude Code leaf. It lives in one of three places:
 - `skills/claude-controlled-build-run/` — a repo that keeps a source copy
 - `skill/claude-controlled-build-run/` — this repo IS the package
 
-Run its `scripts/cbr.sh doctor` (or the package's `verify/smoke.sh`) and
-read the PASS/FAIL lines yourself.
+Run its `scripts/cbr.sh doctor` from the repo root and read the
+PASS/FAIL/WARN lines yourself.
 
 - **Not armed:** stop and offer `/cbr-setup`. Do NOT run setup silently —
   it is heavy (stack detection, config adaptation, live probes) and its

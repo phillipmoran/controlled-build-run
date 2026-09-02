@@ -30,10 +30,14 @@ Purpose: AI-written code often works but branches like a jungle. This skill: mea
 
 ## How this works in a controlled build run
 
-The bar is **cyclomatic complexity ≤ 15 per function**, and it is a
-deterministic gate: the host's lint layer measures it and **pre-commit blocks
-the commit** when a function is over. It is not advice you may weigh — it is a
-fact that stops the commit, exactly like a type error.
+The bar is **cyclomatic complexity ≤ 15 per function**. The ceiling is an
+optional per-project knob (`policy.md`, "The complexity ceiling"): a project
+that wires one gets a deterministic gate — its lint layer measures the number
+and **pre-commit blocks the commit** when a function is over, exactly like a
+type error, not advice you may weigh. A project that has not wired one gets
+this skill as guidance only; the shipped pre-commit template wires no
+ceiling, so check the project's `.pre-commit-config.yaml` to know which
+case you are in.
 
 This skill is injected into a builder's context **at build start, and
 re-injected mid-build after every compaction**, the same way the TDD skill is.
